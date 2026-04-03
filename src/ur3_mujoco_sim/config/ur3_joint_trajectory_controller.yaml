@@ -1,0 +1,22 @@
+# Passed to spawner: --param-file this file (sets joint_trajectory_controller.params_file on CM before load).
+joint_trajectory_controller:
+  ros__parameters:
+    open_loop_control: true
+    joints:
+      - shoulder_pan_joint
+      - shoulder_lift_joint
+      - elbow_joint
+      - wrist_1_joint
+      - wrist_2_joint
+      - wrist_3_joint
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+    state_publish_rate: 100.0
+    action_monitor_rate: 20.0
+    allow_partial_joints_goal: false
+    constraints:
+      goal_time: 2.0
+      stopped_velocity_tolerance: 0.02

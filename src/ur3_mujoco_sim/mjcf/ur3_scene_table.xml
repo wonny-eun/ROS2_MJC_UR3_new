@@ -1,0 +1,91 @@
+<mujoco model="ur3_scene_table">
+  <!-- Robot + actuators (meshes under ../meshes relative to this file) -->
+  <include file="UR3_RG2.xml"/>
+
+  <!-- Camera framing for the MuJoCo viewer -->
+  <statistic center="0.35 0 0.45" extent="1.8"/>
+
+  <visual>
+    <headlight diffuse="0.65 0.65 0.65" ambient="0.2 0.2 0.22" specular="0.2 0.2 0.2"/>
+    <rgba haze="0.12 0.18 0.28 1"/>
+    <global azimuth="140" elevation="-22"/>
+    <quality shadowsize="4096"/>
+  </visual>
+
+  <asset>
+    <!-- Sky gradient + checkered floor material -->
+    <texture type="skybox" builtin="gradient" rgb1="0.4 0.55 0.75" rgb2="0.05 0.06 0.12" width="512" height="3072"/>
+    <texture type="2d" name="ground_tex" builtin="checker" mark="edge" rgb1="0.28 0.32 0.38" rgb2="0.18 0.22 0.28"
+      markrgb="0.9 0.9 0.92" width="512" height="512"/>
+    <material name="ground_mat" texture="ground_tex" texuniform="true" texrepeat="10 10" reflectance="0.05"/>
+    <mesh name="table_mesh" file="../meshes/table.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="plate_mesh" file="../meshes/plate.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="sphere_mesh" file="../meshes/sphere.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="cup_mesh" file="../meshes/cup.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="cylinder_mesh" file="../meshes/cylinder.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="box_mesh" file="../meshes/box.stl" scale="0.001 0.001 0.001"/>
+    <material name="table_mesh_mat" rgba="0.42 0.30 0.18 1" specular="0.3" shininess="0.2"/>
+    <material name="object_mesh_mat" rgba="0.8 0.8 0.85 1" specular="0.25" shininess="0.15"/>
+    <material name="UR_silver" rgba="0.65 0.65 0.66 1"/>
+  </asset>
+
+  <!-- Scene: lights, floor, table (merged with robot worldbody from include) -->
+  <worldbody>
+    <light name="key" pos="1.0 0.6 1.2" dir="-0.6 -0.35 -0.72" directional="true" diffuse="0.95 0.92 0.88" specular="0.3 0.3 0.3"/>
+    <light name="fill" pos="-0.8 0.9 0.9" dir="0.45 -0.55 -0.7" directional="true" diffuse="0.35 0.38 0.45"/>
+
+    <!-- Large floor slab (xy plane near z=0) -->
+    <geom name="scene_floor" type="box" pos="0 0 -0.002" size="3 3 0.002" material="ground_mat" condim="4"
+      friction="1 0.02 0.001" contype="1" conaffinity="1"/>
+
+    <!-- Table mesh in front of the robot (+X). -->
+    <body name="table" pos="0 0 0">
+      <geom
+        name="table_geom"
+        type="mesh"
+        mesh="table_mesh"
+        pos="0 0 0"
+        material="UR_silver"
+        condim="4"
+        friction="0.9 0.02 0.001"
+        contype="1"
+        conaffinity="1"/>
+    </body>
+
+    <!-- Objects on/near the table -->
+    <body name="plate_obj" pos="-0.3 0 0.4">
+      <freejoint/>
+      <inertial pos="0 0 0" mass="0.2" diaginertia="0.001 0.001 0.001"/>
+      <geom name="plate_geom" type="mesh" mesh="plate_mesh" pos="0 0 0" material="object_mesh_mat" 
+            condim="4" friction="1 0.05 0.001" solimp="0.9 0.95 0.001 0.5 2" solref="0.02 1" contype="1" conaffinity="1"/>
+    </body>
+
+    <body name="sphere_obj" pos="-0.3 0.08 0.4">
+      <freejoint/>
+      <inertial pos="0 0 0" mass="0.1" diaginertia="0.001 0.001 0.001"/>
+      <geom name="sphere_geom" type="mesh" mesh="sphere_mesh" pos="0 0 0.025" material="object_mesh_mat" 
+            condim="4" friction="1 0.05 0.001" solimp="0.9 0.95 0.001 0.5 2" solref="0.02 1" contype="1" conaffinity="1"/>
+    </body>
+
+    <body name="cup_obj" pos="-0.3 0.16 0.4">
+      <freejoint/>
+      <inertial pos="0 0 0" mass="0.1" diaginertia="0.001 0.001 0.001"/>
+      <geom name="cup_geom" type="mesh" mesh="cup_mesh" pos="0 0 0" material="object_mesh_mat" 
+            condim="4" friction="1 0.05 0.001" solimp="0.9 0.95 0.001 0.5 2" solref="0.02 1" contype="1" conaffinity="1"/>
+    </body>
+
+    <body name="cylinder_obj" pos="-0.3 -0.08 0.4">
+      <freejoint/>
+      <inertial pos="0 0 0" mass="0.15" diaginertia="0.001 0.001 0.001"/>
+      <geom name="cylinder_geom" type="mesh" mesh="cylinder_mesh" pos="0 0 0" material="object_mesh_mat" 
+            condim="4" friction="1 0.05 0.001" solimp="0.9 0.95 0.001 0.5 2" solref="0.02 1" contype="1" conaffinity="1"/>
+    </body>
+
+    <body name="box_obj" pos="-0.3 -0.16 0.4">
+      <freejoint/>
+      <inertial pos="0 0 0" mass="0.1" diaginertia="0.001 0.001 0.001"/>
+      <geom name="box_geom" type="mesh" mesh="box_mesh" pos="0 0 0" material="object_mesh_mat" 
+            condim="4" friction="1 0.05 0.001" solimp="0.9 0.95 0.001 0.5 2" solref="0.02 1" contype="1" conaffinity="1"/>
+    </body>
+  </worldbody>
+</mujoco>

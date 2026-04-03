@@ -1,0 +1,214 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://wiki.ros.org/xacro" name="$(arg name)">
+  <!--
+    UR3 URDF for MuJoCo + ros2_control + MoveIt.
+    - Uses the official `ur_description` kinematic/visual model.
+    - Disables the default UR ros2_control tag from `ur_robot` and replaces it
+      with the MuJoCo ros2_control hardware plugin.
+  -->
+
+  <xacro:arg name="name" default="ur"/>
+  <xacro:arg name="ur_type" default="ur3"/>
+  <xacro:arg name="tf_prefix" default=""/>
+
+  <xacro:arg name="joint_limit_params" default="$(find ur_description)/config/$(arg ur_type)/joint_limits.yaml"/>
+  <xacro:arg name="kinematics_params" default="$(find ur_description)/config/$(arg ur_type)/default_kinematics.yaml"/>
+  <xacro:arg name="physical_params" default="$(find ur_description)/config/$(arg ur_type)/physical_parameters.yaml"/>
+  <xacro:arg name="visual_params" default="$(find ur_description)/config/$(arg ur_type)/visual_parameters.yaml"/>
+
+  <!-- MuJoCo / mujoco_ros2_simulation parameters -->
+  <!-- Default: scene wrapper (floor, table, sky) + included UR3_RG2.xml -->
+  <xacro:arg name="mujoco_model" default="$(find ur3_mujoco_sim)/mjcf/ur3_scene_table.xml"/>
+  <xacro:arg name="sim_speed_factor" default="1.0"/>
+  <xacro:arg name="headless" default="false"/>
+  <xacro:arg name="camera_publish_rate" default="5.0"/>
+  <xacro:arg name="lidar_publish_rate" default="5.0"/>
+
+  <!-- Official UR model macros -->
+  <xacro:include filename="$(find ur_description)/urdf/ur_macro.xacro"/>
+
+  <!-- Create link fixed to world (same as upstream ur.urdf.xacro) -->
+  <link name="world" />
+
+  <!-- Build the UR3 kinematic chain WITHOUT generating the default ros2_control tag -->
+  <xacro:ur_robot
+    name="$(arg name)"
+    tf_prefix="$(arg tf_prefix)"
+    parent="world"
+    joint_limits_parameters_file="$(arg joint_limit_params)"
+    kinematics_parameters_file="$(arg kinematics_params)"
+    physical_parameters_file="$(arg physical_params)"
+    visual_parameters_file="$(arg visual_params)"
+    generate_ros2_control_tag="false"
+    >
+    <origin xyz="0 0 0.4" rpy="0 0 -1.5708" />
+  </xacro:ur_robot>
+
+  <!--
+    Scene props for RViz visualization.
+    These mirror `mjcf/ur3_scene_table.xml` (same mesh files, same poses, no rotation).
+  -->
+  <link name="table">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://ur3_mujoco_sim/meshes/table.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://ur3_mujoco_sim/meshes/table.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="world_to_table" type="fixed">
+    <parent link="world"/>
+    <child link="table"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <link name="plate">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://ur3_mujoco_sim/meshes/plate.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://ur3_mujoco_sim/meshes/plate.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="world_to_plate" type="fixed">
+    <parent link="world"/>
+    <child link="plate"/>
+    <origin xyz="-0.3 0 0.4" rpy="0 0 0"/>
+  </joint>
+
+  <link name="sphere">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://ur3_mujoco_sim/meshes/sphere.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://ur3_mujoco_sim/meshes/sphere.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="world_to_sphere" type="fixed">
+    <parent link="world"/>
+    <child link="sphere"/>
+    <origin xyz="-0.3 0.08 0.425" rpy="0 0 0"/>
+  </joint>
+
+  <link name="cup">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://ur3_mujoco_sim/meshes/cup.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://ur3_mujoco_sim/meshes/cup.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="world_to_cup" type="fixed">
+    <parent link="world"/>
+    <child link="cup"/>
+    <origin xyz="-0.3 0.16 0.4" rpy="0 0 0"/>
+  </joint>
+
+  <link name="cylinder">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://ur3_mujoco_sim/meshes/cylinder.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://ur3_mujoco_sim/meshes/cylinder.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="world_to_cylinder" type="fixed">
+    <parent link="world"/>
+    <child link="cylinder"/>
+    <origin xyz="-0.3 -0.08 0.4" rpy="0 0 0"/>
+  </joint>
+
+  <link name="box">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://ur3_mujoco_sim/meshes/box.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://ur3_mujoco_sim/meshes/box.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="world_to_box" type="fixed">
+    <parent link="world"/>
+    <child link="box"/>
+    <origin xyz="-0.3 -0.16 0.4" rpy="0 0 0"/>
+  </joint>
+
+  <!-- MuJoCo ros2_control system interface -->
+  <ros2_control name="MujocoSystem" type="system">
+    <hardware>
+      <plugin>mujoco_ros2_simulation/MujocoSystemInterface</plugin>
+      <param name="mujoco_model">$(arg mujoco_model)</param>
+      <param name="sim_speed_factor">$(arg sim_speed_factor)</param>
+      <param name="headless">$(arg headless)</param>
+      <param name="camera_publish_rate">$(arg camera_publish_rate)</param>
+      <param name="lidar_publish_rate">$(arg lidar_publish_rate)</param>
+    </hardware>
+
+    <joint name="$(arg tf_prefix)shoulder_pan_joint">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="$(arg tf_prefix)shoulder_lift_joint">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="$(arg tf_prefix)elbow_joint">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="$(arg tf_prefix)wrist_1_joint">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="$(arg tf_prefix)wrist_2_joint">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="$(arg tf_prefix)wrist_3_joint">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+  </ros2_control>
+</robot>
+

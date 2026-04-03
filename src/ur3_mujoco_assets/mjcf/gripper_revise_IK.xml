@@ -1,0 +1,460 @@
+<mujoco model="UR3_Gripper">
+  <compiler angle="radian" meshdir="../meshes"/>
+  
+  <option integrator="implicitfast" timestep="0.0005" gravity="0 0 0"/>
+  
+  <asset>
+    <texture name="skybox" type="skybox" builtin="flat" rgb1="0.8 0.8 0.8" rgb2="0.8 0.8 0.8" width="512" height="512"/>
+  </asset>
+  
+  <default>
+    <joint damping="300" frictionloss="1"/>
+  </default>
+  
+  <asset>
+    <mesh name="table" file="table.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="base_link" file="base_link.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="link1_1_1" file="link1_1_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="link1_2_1" file="link1_2_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="link2_1_1" file="link2_1_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="link2_2_1" file="link2_2_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="link2_3_1" file="link2_3_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="link2_4_1" file="link2_4_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="link2_6_1" file="link2_6_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="link2_7_1" file="link2_7_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="link3_1_1" file="link3_1_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="link3_2_1" file="link3_2_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="link3_3_1" file="link3_3_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="link3_4_1" file="link3_4_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="link3_5_1" file="link3_5_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="link3_7_1" file="link3_7_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="link3_6_1" file="link3_6_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="link4_1_1" file="link4_1_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="link4_3_1" file="link4_3_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="link4_2_1" file="link4_2_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="link5_1_1" file="link5_1_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="link5_3_1" file="link5_3_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="link5_2_1" file="link5_2_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="link6_1_1" file="link6_1_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="link6_2_1" file="link6_2_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="link1_3_1" file="link1_3_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="link2_5_1" file="link2_5_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="link2_8_1" file="link2_8_1.stl" scale="0.001 0.001 0.001"/>
+  
+	  <mesh name="QC1_1" file="QC1_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="QC2_1" file="QC2_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="QC3_1" file="QC3_1.stl" scale="0.001 0.001 0.001"/>
+  	<mesh name="Gripper_base_1" file="Gripper_base_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="Gripper_base_blue_1" file="Gripper_base_blue_1.stl" scale="0.001 0.001 0.001"/>
+   	<mesh name="Gripper_base_LED_1" file="Gripper_base_LED_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="Right_tip_finger_1" file="Right_tip_finger_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="Right_tip_tip_1" file="Right_tip_tip_1.stl" scale="0.001 0.001 0.001"/>
+  	<mesh name="Right_in_1" file="Right_in_1.stl" scale="0.001 0.001 0.001"/>
+  	<mesh name="Left_tip_finger_1" file="Left_tip_finger_1.stl" scale="0.001 0.001 0.001"/>
+  	<mesh name="Left_tip_tip_1" file="Left_tip_tip_1.stl" scale="0.001 0.001 0.001"/>
+  	<mesh name="Left_in_1" file="Left_in_1.stl" scale="0.001 0.001 0.001"/>
+  	<mesh name="Right_guard_link_1" file="Right_guard_link_1.stl" scale="0.001 0.001 0.001"/>
+  	<mesh name="Right_guard_1" file="Right_guard_1.stl" scale="0.001 0.001 0.001"/>
+  	<mesh name="Left_guard_link_1" file="Left_guard_link_1.stl" scale="0.001 0.001 0.001"/>
+  	<mesh name="Left_guard_1" file="Left_guard_1.stl" scale="0.001 0.001 0.001"/>
+  	<mesh name="Right_out_1" file="Right_out_1.stl" scale="0.001 0.001 0.001"/>
+  	<mesh name="Left_out_1" file="Left_out_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="cola" file="cola.stl" scale="0.001 0.001 0.001" />
+
+    <material name="silver" rgba="0.898039216 0.917647059 0.929411765 1.000"/>
+    <material name="black" rgba="0.101960784 0.101960784 0.101960784 1.000"/>
+    <material name="gray" rgba="0.301960784 0.301960784 0.301960784 1.000"/>
+    <material name="sky" rgba="0.333333333 0.862745098 1.000 1.000"/>
+	  <material name="red" rgba="0.957 0.0 0.035 1"/>
+  </asset>
+
+  <worldbody>
+    
+    <body name="cola" pos="0.3 0.1 0.7">
+      <joint type="free" name="free_contact" damping="0.05"/>
+      <geom type="mesh" mesh="cola" material="red" mass="0.35" condim="4" contype="1" conaffinity="1" friction="2 0.1 0.1" solref="0.02 1" solimp="0.99 0.999 0.0001" priority="1"/>
+    </body>
+
+    <body name="table" pos="0 0 0">
+      <geom type="mesh" mesh="table" material="silver" contype="1" conaffinity="1" friction="1 0.05 0.01" solref="0.015 1.2" solimp="0.1 0.95 0.001"/>
+<!-- 
+	  body는 stl파일 상 원점을 어디로 불러올 것인지. (이때, body는 부품과 겹쳐있는 상태)
+joint는 해당 body의 로컬 좌표계상 위치를 기준으로 어디에 joint를 배치할 것인지.
+geom은 해당 body의 로컬 좌표계상 위치를 기준으로 어디에 geom을 배치할 것인지. (이게 실제 부품의 위치와 관련)
+	  -->
+      <body name="base_link" pos="0 0 0.6">
+        <inertial mass="4.0" pos="0 0 0" diaginertia="0.00443333156 0.00443333156 0.0072"/>
+        <geom type="mesh" mesh="base_link" material="silver"/>
+		    <geom type="mesh" mesh="link1_1_1" material="black"/>
+		
+		    <body name="link1_3_1" pos="0 0 0.0964">
+  		    <inertial pos="0.0173164 -2.24961e-06 0.0458106" quat="0.569745 0.419509 0.420661 0.567844" mass="5.97431" diaginertia="0.00983303 0.00969495 0.00666908"/>
+  		    <joint name="actuator1" pos="0 0 0" axis="0 0 -1" frictionloss="0.01" armature="3"/>
+  		    <geom pos="0 0 -0.0964" quat="1 0 0 0" type="mesh" mesh="link1_3_1" material="gray"/>
+  		    <geom pos="0 0 -0.0964" quat="1 0 0 0" type="mesh" mesh="link1_2_1" material="sky"/>
+  		    <geom pos="0 0 -0.0964" type="mesh" mesh="link2_1_1" material="black"/>
+		  
+		      <body name="link2_2_1" pos="0.06435 0 0.055499">
+   		      <inertial pos="0.0521391 -0.0378523 -0.0791486" quat="0.989455 -0.112425 -0.0232559 -0.088305" mass="13.6084" diaginertia="0.13745 0.124984 0.0305047"/>
+   		    	<joint name="actuator2" pos="0 0 0" axis="-1 0 0" frictionloss="0.01" armature="3"/>
+   		    	<geom pos="-0.06435 0 -0.151899" quat="1 0 0 0" type="mesh" mesh="link2_2_1" material="gray"/>
+   		    	<geom pos="-0.06435 0 -0.151899" type="mesh" mesh="link2_3_1" material="sky"/>
+   		    	<geom pos="-0.06435 0 -0.151899" quat="1 0 0 0" type="mesh" mesh="link2_4_1" material="black"/>
+   		    	<geom pos="-0.06435 0 -0.151899" quat="1 0 0 0" type="mesh" mesh="link2_5_1" material="silver"/>
+   		    	<geom pos="-0.06435 0 -0.151899" quat="1 0 0 0" type="mesh" mesh="link2_6_1" material="black"/>
+   		    	<geom pos="-0.06435 0 -0.151899" quat="1 0 0 0" type="mesh" mesh="link2_8_1" material="gray"/>
+   		    	<geom pos="-0.06435 0 -0.151899" quat="1 0 0 0" type="mesh" mesh="link2_7_1" material="sky"/>
+   		    	<geom pos="-0.06435 0 -0.151899" type="mesh" mesh="link3_1_1" material="black"/>
+			
+	      		<body name="link3_2_1" pos="0.005149 -0.24365 0">
+  		    	  <inertial pos="-0.00628854 0.000339805 -0.0287279" quat="0.722918 0.648985 -0.232121 -0.0482484" mass="7.07092" diaginertia="0.0877362 0.0869318 0.0104421"/>
+  			      <joint name="actuator3" pos="0 0 0" axis="1 0 0" frictionloss="0.01" armature="3"/>
+  			      <geom pos="-0.069499 0.24365 -0.151899" quat="1 0 0 0" type="mesh" mesh="link3_2_1" material="gray"/>
+ 			        <geom pos="-0.069499 0.24365 -0.151899" quat="1 0 0 0" type="mesh" mesh="link3_3_1" material="black"/>
+  			      <geom pos="-0.069499 0.24365 -0.151899" quat="1 0 0 0" type="mesh" mesh="link3_4_1" material="silver"/>
+  			      <geom pos="-0.069499 0.24365 -0.151899" quat="1 0 0 0" type="mesh" mesh="link3_5_1" material="black"/>
+  			      <geom pos="-0.069499 0.24365 -0.151899" quat="1 0 0 0" type="mesh" mesh="link3_7_1" material="gray"/>
+  			      <geom pos="-0.069499 0.24365 -0.151899" type="mesh" mesh="link3_6_1" material="sky"/>
+  			      <geom pos="-0.069499 0.24365 -0.151899" type="mesh" mesh="link4_1_1" material="black"/>
+			  
+			        <body name="link4_3_1" pos="0.0059 -0.213 0">
+  				      <inertial pos="0.0262187 -0.00371917 0.001064" quat="0.903857 0.116448 -0.267948 0.312548" mass="2.42885" diaginertia="0.00264184 0.0025541 0.00145789"/>
+  				      <joint name="actuator4" pos="0 0 0" axis="-1 0 0" frictionloss="0.01" armature="3"/>
+  			      	<geom pos="-0.075399 0.45665 -0.151899" quat="1 0 0 0" type="mesh" mesh="link4_3_1" material="gray"/>
+         				<geom pos="-0.075399 0.45665 -0.151899" quat="1 0 0 0" type="mesh" mesh="link4_2_1" material="sky"/>
+  		      		<geom pos="-0.075399 0.45665 -0.151899" quat="1 0 0 0" type="mesh" mesh="link5_1_1" material="black"/>
+
+                <body name="link5_3_1" pos="0.035 0 -0.0484">
+                  <inertial pos="0.000489115 0.00490239 -0.0263219" quat="0.339589 0.837863 0.10582 0.414086" mass="2.43479" diaginertia="0.00259642 0.00254545 0.00144106"/>
+                  <joint name="actuator5" pos="0 0 0" axis="0 0 1" frictionloss="0.01" armature="3"/>
+                  <geom pos="-0.110399 0.45665 -0.103499" quat="1 0 0 0" type="mesh" mesh="link5_3_1" material="gray"/>
+                  <geom pos="-0.110399 0.45665 -0.103499" quat="1 0 0 0" type="mesh" mesh="link5_2_1" material="sky"/>
+                  <geom pos="-0.110399 0.45665 -0.103499" type="mesh" mesh="link6_1_1" material="black"/>
+                  
+                  <body name="link6_2_1" pos="0.0504 0 -0.035">
+                    <inertial pos="0.0455337 -0.000320934 0.0226168" quat="0.642522 0.355388 0.452592 0.505989" mass="3.14834" diaginertia="0.00593083 0.00580856 0.0021838"/>
+                    <joint name="actuator6" pos="0 0 0" axis="-1 0 0" frictionloss="0.01" armature="3"/>
+                    <geom pos="-0.160799 0.45665 -0.068499" type="mesh" mesh="link6_2_1" material="gray"/>
+                    <geom pos="-0.160799 0.45665 -0.068499" quat="1 0 0 0" type="mesh" mesh="QC1_1" material="sky"/>
+                    <geom pos="-0.160799 0.45665 -0.068499" type="mesh" mesh="QC2_1" material="black"/>
+                    <geom pos="-0.160799 0.45665 -0.068499" type="mesh" mesh="QC3_1" material="black"/>
+                    <geom pos="-0.160799 0.45665 -0.068499" quat="1 0 0 0" type="mesh" mesh="Gripper_base_1" material="silver"/>
+                    <geom pos="-0.160799 0.45665 -0.068499" type="mesh" mesh="Gripper_base_blue_1" material="sky"/>
+                    <geom pos="-0.160799 0.45665 -0.068499" type="mesh" mesh="Gripper_base_LED_1" material="black"/>
+                    
+                    <body name="ee_site_body" pos="0.21 0 0"> 
+                      <site name="ee_center" pos="0 0 0" size="0.005" rgba="1 0 0 1" group="1"/>
+                    </body>
+                    
+                    <site name="Right_base_fixed_point" pos="0.17175 -0.00755 0" size="0.0015" rgba="1 1 0 1"/>
+                    <site name="Left_base_fixed_point" pos="0.17175 0.00755 0" size="0.0015" rgba="1 1 0 1"/>
+
+                    <body name="Right_out_1" pos="0.15525 -0.01705 -0.0103">
+                      <inertial pos="0.00820879 -0.0103038 0.0102957" quat="0.655513 0.655513 0.265147 0.265147" mass="0.101096" diaginertia="3.65083e-05 3.6e-05 6.49167e-06"/>
+                      <joint name="actuator_right_gripper" pos="0 0 0" axis="0 0 1" damping="5" frictionloss="0.01" armature="0.01"/>
+                      <geom pos="-0.316049 0.4737 -0.058199" quat="1 0 0 0" type="mesh" mesh="Right_out_1" material="silver"/>
+                      
+                      
+                      <body name="Right_tip_finger_1" pos="0.038281 -0.039491 0.0203">
+                        <inertial pos="-0.0817436 0.363181 -0.253682" quat="0.611253 0.409268 -0.2395 0.633648" mass="0.0700261" diaginertia="0.0159068 0.0159056 3.59518e-06"/>
+                        <joint name="joint_rightout_finger" pos="0 0 0" axis="0 0 1" damping="3" frictionloss="0.01" armature="0.01"/>
+                        <geom pos="-0.35433 0.513191 -0.078499" quat="1 0 0 0" type="mesh" mesh="Right_tip_finger_1" material="silver"/>
+                        <geom pos="-0.35433 0.513191 -0.078499" quat="1 0 0 0" type="mesh" mesh="Right_tip_tip_1" material="black" friction="10 0.05 0.01"/>
+                        <site name="Right_hinge_in_a" pos="0.00825 0.00475 -0.01" size="0.001" rgba="1 0 1 1"/>   
+                        
+                        <body name="Right_in_1" pos="0.0165 0.0095 0">
+                          <inertial pos="-0.0236327 0.025011 -0.00999484" quat="0.653281 0.653281 0.270598 0.270598" mass="0.0339558" diaginertia="1.6e-05 1.5e-05 2e-06"/>
+                          <joint name="joint_rightfinger_in" pos="0 0 0" axis="0 0 1" damping="3" frictionloss="0.01" armature="0.01"/>
+                          <geom pos="-0.37083 0.503691 -0.078499" quat="1 0 0 0" type="mesh" mesh="Right_in_1" material="silver"/>
+                          <site name="Right_in_moving_point" pos="-0.038281 0.039491 -0.01" size="0.0015" rgba="1 0 0 1"/>
+                        </body>
+                      </body>
+                      
+                      <body name="Right_guard_link_1" pos="0.013202 -0.015057 0.013525">
+                        <inertial pos="0.00369488 0.00212771 -0.00298433" mass="0.00267268" diaginertia="1e-06 1e-06 1e-06"/>
+                        <joint name="joint_rightout_guardlink" pos="0 0 0" axis="0 0 1" damping="3" frictionloss="0.01" armature="0.01"/>
+                        <geom pos="-0.329251 0.488757 -0.071724" quat="1 0 0 0" type="mesh" mesh="Right_guard_link_1"/>
+
+                        <body name="Right_guard_1" pos="0.00825 0.00475 0.0022">
+                          <inertial pos="0.0112187 -0.0109533 -0.00542264" quat="0.92388 0 0 0.382683" mass="0.0188073" diaginertia="5e-06 3e-06 3e-06"/>
+                          <joint name="joint_rightguardlink_guard" pos="0 0 0" axis="0 0 -1" damping="3" frictionloss="0.01" armature="0.01"/>
+                          <geom pos="-0.337501 0.484007 -0.073924" quat="1 0 0 0" type="mesh" mesh="Right_guard_1" material="black"/>
+                          <site name="Right_hinge_in_b" pos="0.025079 -0.024434 -0.005425" size="0.001" rgba="1 1 0 1"/>
+                        </body>
+                      </body>
+                    </body>
+
+                    <body name="Left_out_1" pos="0.15525 0.01695 -0.0103">
+                      <inertial pos="0.00818449 0.0103258 0.0102957" quat="0.655513 0.655513 -0.265147 -0.265147" mass="0.101082" diaginertia="3.65083e-05 3.6e-05 6.49167e-06"/>
+                      <joint name="actuator_left_gripper" pos="0 0 0" axis="0 0 1" damping="5" frictionloss="0.01" armature="0.01"/>
+                      <geom pos="-0.316049 0.4397 -0.058199" quat="1 0 0 0" type="mesh" mesh="Left_out_1" material="silver"/>
+                      
+
+                      <body name="Left_tip_finger_1" pos="0.038177 0.039591 0.0203">
+                        <inertial pos="-0.0817429 0.355367 -0.267118" quat="0.615011 0.402047 -0.236992 0.635575" mass="0.0700266" diaginertia="0.0168351 0.0168338 3.58508e-06"/>
+                        <joint name="joint_leftout_finger" pos="0 0 0" axis="0 0 1" damping="3" frictionloss="0.01" armature="0.01"/>
+                        <geom pos="-0.354226 0.400109 -0.078499" quat="1 0 0 0" type="mesh" mesh="Left_tip_finger_1" material="silver"/>
+                        <geom pos="-0.354226 0.400109 -0.078499" quat="1 0 0 0" type="mesh" mesh="Left_tip_tip_1" material="black" friction="10 0.05 0.01"/>
+                        <site name="Left_hinge_in_a" pos="0.00825 -0.00475 -0.01" size="0.001" rgba="1 0 1 1"/>
+
+                        <body name="Left_in_1" pos="0.0165 -0.0095 0">
+                          <inertial pos="-0.0235666 -0.0250728 -0.00999484" quat="0.653281 0.653281 -0.270598 -0.270598" mass="0.0339558" diaginertia="1.6e-05 1.5e-05 2e-06"/>
+                          <joint name="joint_leftfinger_in" pos="0 0 0" axis="0 0 1" damping="3" frictionloss="0.01" armature="0.01"/>
+                          <geom pos="-0.370726 0.409609 -0.078499" quat="1 0 0 0" type="mesh" mesh="Left_in_1" material="silver"/>
+                          <site name="Left_in_moving_point" pos="-0.038281 -0.039491 -0.01" size="0.0015" rgba="1 0 0 1"/>
+
+                        </body>
+                      </body>
+
+                      <body name="Left_guard_link_1" pos="0.013163 0.015091 0.007075">
+                        <inertial pos="0.0036944 -0.0021272 0.00305686" mass="0.00267269" diaginertia="1e-06 1e-06 1e-06"/>
+                        <joint name="joint_leftout_guardlink" pos="0 0 0" axis="0 0 -1" damping="3" frictionloss="0.01" armature="0.01"/>
+                        <geom pos="-0.329212 0.424609 -0.065274" quat="1 0 0 0" type="mesh" mesh="Left_guard_link_1"/>
+                        
+                        
+                        <body name="Left_guard_1" pos="0.00825 -0.00475 -0.0022">
+                          <inertial pos="0.0111896 0.0109832 0.00542196" quat="0.92388 0 0 -0.382683" mass="0.0188072" diaginertia="5e-06 3e-06 3e-06"/>
+                          <joint name="joint_leftguardlink_guard" pos="0 0 0" axis="0 0 1" damping="3" frictionloss="0.01" armature="0.01"/>
+                          <geom pos="-0.337462 0.429359 -0.063074" quat="1 0 0 0" type="mesh" mesh="Left_guard_1" material="black"/>
+                          <site name="Left_hinge_in_b" pos="0.025079 0.024434 -0.005425" size="0.001" rgba="1 1 0 1"/>
+                        </body>
+                      </body>
+                    </body>
+                  </body>
+                </body>
+              </body>
+			      </body>
+		      </body>
+		    </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <equality>
+    <connect name="right_parallel_link_out" site1="Right_base_fixed_point" site2="Right_in_moving_point" solref="0.01 1" solimp="0.999 0.999 0.0001"/>
+    <connect name="right_parallel_link_in" site1="Right_hinge_in_a" site2="Right_hinge_in_b" solref="0.01 1" solimp="0.999 0.999 0.0001"/>
+    <connect name="left_parallel_link_out" site1="Left_base_fixed_point" site2="Left_in_moving_point" solref="0.01 1" solimp="0.999 0.999 0.0001"/>
+    <connect name="left_parallel_link_in" site1="Left_hinge_in_a" site2="Left_hinge_in_b" solref="0.01 1" solimp="0.999 0.999 0.0001"/>
+    <joint joint1="actuator_left_gripper" joint2="actuator_right_gripper" polycoef="0 -1 0 0 0" solref="0.005 1" solimp="0.95 0.99 0.001"/>
+  </equality>
+ 
+  <actuator>
+    <position name="actuator1_pos" joint="actuator1" ctrlrange="-6.28 6.28" kp="5000" forcerange="-300 300"/>
+    <position name="actuator2_pos" joint="actuator2" ctrlrange="-6.28 6.28" kp="5000" forcerange="-300 300"/>
+    <position name="actuator3_pos" joint="actuator3" ctrlrange="-3.14 3.14" kp="5000" forcerange="-300 300"/>
+    <position name="actuator4_pos" joint="actuator4" ctrlrange="-6.28 6.28" kp="2000" forcerange="-300 300"/>
+    <position name="actuator5_pos" joint="actuator5" ctrlrange="-6.28 6.28" kp="2000" forcerange="-100 100"/>
+    <position name="actuator6_pos" joint="actuator6" ctrlrange="-6.28 6.28" kp="4000" forcerange="-100 100"/>
+
+    <position name="gripper_control" joint="actuator_right_gripper" ctrlrange="-0.8 0.8" kp="10000" forcerange="-1000 1000"/> 
+  </actuator>
+  
+  <contact>
+
+    <exclude body1="base_link" body2="link1_3_1"/>
+    <exclude body1="link1_3_1" body2="link2_2_1"/>
+    <exclude body1="link2_2_1" body2="link3_2_1"/>
+    <exclude body1="link3_2_1" body2="link4_3_1"/>
+    <exclude body1="link4_3_1" body2="link5_3_1"/>
+    <exclude body1="link5_3_1" body2="link6_2_1"/>
+
+
+    <exclude body1="link6_2_1" body2="Right_out_1"/>
+    <exclude body1="link6_2_1" body2="Right_in_1"/>
+    <exclude body1="link6_2_1" body2="Right_guard_1"/>
+    <exclude body1="link6_2_1" body2="Right_guard_link_1"/>
+    <exclude body1="link6_2_1" body2="Right_tip_finger_1"/>
+    <exclude body1="link6_2_1" body2="Left_out_1"/>
+    <exclude body1="link6_2_1" body2="Left_in_1"/>
+    <exclude body1="link6_2_1" body2="Left_guard_1"/>
+    <exclude body1="link6_2_1" body2="Left_guard_link_1"/>
+    <exclude body1="link6_2_1" body2="Left_tip_finger_1"/>
+
+    <exclude body1="Right_out_1" body2="Right_in_1"/>
+    <exclude body1="Right_out_1" body2="Right_guard_1"/>
+    <exclude body1="Right_out_1" body2="Right_guard_link_1"/>
+    <exclude body1="Right_out_1" body2="Right_tip_finger_1"/>
+    <exclude body1="Right_in_1" body2="Right_guard_1"/>
+    <exclude body1="Right_in_1" body2="Right_guard_link_1"/>
+    <exclude body1="Right_in_1" body2="Right_tip_finger_1"/>
+    <exclude body1="Right_guard_1" body2="Right_guard_link_1"/>
+    <exclude body1="Right_guard_1" body2="Right_tip_finger_1"/>
+    <exclude body1="Right_guard_link_1" body2="Right_tip_finger_1"/>
+
+    <exclude body1="Left_out_1" body2="Left_in_1"/>
+    <exclude body1="Left_out_1" body2="Left_guard_1"/>
+    <exclude body1="Left_out_1" body2="Left_guard_link_1"/>
+    <exclude body1="Left_out_1" body2="Left_tip_finger_1"/>
+    <exclude body1="Left_in_1" body2="Left_guard_1"/>
+    <exclude body1="Left_in_1" body2="Left_guard_link_1"/>
+    <exclude body1="Left_in_1" body2="Left_tip_finger_1"/>
+    <exclude body1="Left_guard_1" body2="Left_guard_link_1"/>
+    <exclude body1="Left_guard_1" body2="Left_tip_finger_1"/>
+    <exclude body1="Left_guard_link_1" body2="Left_tip_finger_1"/>
+  </contact>
+
+<!--
+        <body name="link1_11" pos="0 0 0.08605">
+          <inertial mass="3.7" pos="0 0 0" diaginertia="0.0102675 0.0102675 0.00666"/>
+          <joint name="revolute_joint_1" pos="0 0 0" axis="0 0 1"/>
+          <geom pos="0 0 -0.08605" type="mesh" mesh="link1_11" material="black"/>
+          <geom pos="0 0 -0.08605" type="mesh" mesh="link1_31" material="gray"/>
+          <geom pos="0 0 -0.08605" type="mesh" mesh="link1_21" material="sky"/>
+          
+          <body name="link2_11" pos="0.054 0 0.065849">
+            <inertial mass="8.393" pos="0 0 0.2125" diaginertia="0.133886 0.133886 0.0151074"/>
+            <joint name="revolute_joint_2" pos="0 0 0" axis="1 0 0"/>
+            <geom pos="-0.054 0 -0.151899" type="mesh" mesh="link2_11" material="black"/>
+            <geom pos="-0.054 0 -0.151899" type="mesh" mesh="link2_21" material="gray"/>
+            <geom pos="-0.054 0 -0.151899" type="mesh" mesh="link2_31" material="sky"/>
+            <geom pos="-0.054 0 -0.151899" type="mesh" mesh="link2_41" material="black"/>
+            <geom pos="-0.054 0 -0.151899" type="mesh" mesh="link2_51" material="silver"/>
+            <geom pos="-0.054 0 -0.151899" type="mesh" mesh="link2_61" material="black"/>
+            <geom pos="-0.054 0 -0.151899" type="mesh" mesh="link2_81" material="gray"/>
+            <geom pos="-0.054 0 -0.151899" type="mesh" mesh="link2_71" material="sky"/>
+            
+            <body name="link3_11" pos="0.023599 -0.24365 0">
+              <inertial mass="2.275" pos="0 0 0.196" diaginertia="0.0311796 0.0311796 0.004095"/>
+              <joint name="revolute_joint_3" pos="0 0 0" axis="1 0 0"/>
+              <geom pos="-0.077599 0.24365 -0.151899" type="mesh" mesh="link3_11" material="black"/>
+              <geom pos="-0.077599 0.24365 -0.151899" type="mesh" mesh="link3_21" material="gray"/>
+              <geom pos="-0.077599 0.24365 -0.151899" type="mesh" mesh="link3_31" material="black"/>
+              <geom pos="-0.077599 0.24365 -0.151899" type="mesh" mesh="link3_41" material="silver"/>
+              <geom pos="-0.077599 0.24365 -0.151899" type="mesh" mesh="link3_51" material="black"/>
+              <geom pos="-0.077599 0.24365 -0.151899" type="mesh" mesh="link3_71" material="gray"/>
+              <geom pos="-0.077599 0.24365 -0.151899" type="mesh" mesh="link3_61" material="sky"/>
+              
+              <body name="link4_11" pos="-0.008 -0.213 0">
+                <inertial mass="1.219" pos="0 0.127 0" diaginertia="0.0025599 0.0025599 0.0021942"/>
+                <joint name="revolute_joint_4" pos="0 0 0" axis="1 0 0"/>
+                <geom pos="-0.069599 0.45665 -0.151899" type="mesh" mesh="link4_11" material="black"/>
+                <geom pos="-0.069599 0.45665 -0.151899" type="mesh" mesh="link4_31" material="gray"/>
+                <geom pos="-0.069599 0.45665 -0.151899" type="mesh" mesh="link4_21" material="sky"/>
+                
+                <body name="link5_11" pos="0.0408 0 -0.0426">
+                  <inertial mass="1.219" pos="0 0 0.1" diaginertia="0.0025599 0.0025599 0.0021942"/>
+                  <joint name="revolute_joint_5" pos="0 0 0" axis="0 0 -1"/>
+                  <geom pos="-0.110399 0.45665 -0.109299" type="mesh" mesh="link5_11" material="black"/>
+                  <geom pos="-0.110399 0.45665 -0.109299" type="mesh" mesh="link5_31" material="gray"/>
+                  <geom pos="-0.110399 0.45665 -0.109299" type="mesh" mesh="link5_21" material="sky"/>
+                  
+                  <body name="link6_11" pos="0.0426 0 -0.0408">
+                    <inertial mass="0.1889" pos="0 0.0771683 0" diaginertia="0.000132134 9.90863e-05 9.90863e-05"/>
+                    <joint name="revolute_joint_6" pos="0 0 0" axis="1 0 0"/>
+                    <geom pos="-0.152999 0.45665 -0.068499" type="mesh" mesh="link6_11" material="black"/>
+                    <geom pos="-0.152999 0.45665 -0.068499" type="mesh" mesh="link6_21" material="silver"/>
+                    
+                    <body name="rg2_bracket" pos="0.0426 0.0 0.0" quat="0.707 0 0.707 0">
+                      <inertial mass="0.2" pos="0 0 0" diaginertia="0.001 0.001 0.001"/>
+                      <geom pos="0 0 0" type="mesh" mesh="single_bracket" material="black"/>
+
+					  
+					  <body name="gripper_body" pos="0.0 0.0 0.05">
+                        <inertial mass="0.5" pos="0 0 0" diaginertia="0.001 0.001 0.001"/>
+                        <geom pos="0 0 0" type="mesh" mesh="gripper_body" material="silver"/>
+						
+						<body name="moment_arm_1" pos="-0.017 0.0 0.055">
+                          <inertial mass="0.1" pos="0 0 0" diaginertia="0.001 0.001 0.001"/>
+						  <joint name="gripper_joint_1" pos="0 0 0" axis="0 1 0" range="-0.6 0.45" damping="1" frictionloss="0.01" armature="0.01"/>
+                          <geom pos="0 0 0" type="mesh" mesh="moment_arm" material="black"/>
+						  
+						  <body name="finger_tip_1" pos="-0.01605 0.0 0.06517" quat="1 0 0 0">
+                            <inertial mass="0.1" pos="0 0 0" diaginertia="0.001 0.001 0.001"/>
+						    <joint name="gripper_joint_2" pos="-0.0095 0 -0.0166" axis="0 1 0" damping="1" frictionloss="0.01" armature="0.01"/>
+                            <geom pos="0 0 0" type="mesh" mesh="finger_tip" material="silver"/>
+							<site name="tip1_hinge" pos="0 0 0" size="0.001" rgba="1 0 0 1"/>
+							
+							<body name="gripper_tip_1" pos="0.0308 0 0.0175" quat="1 0 0 0">
+                              <inertial mass="0.1" pos="0 0 0" diaginertia="0.001 0.001 0.001"/>
+                              <geom pos="0 0 0" type="mesh" mesh="gripper_tip" material="black" solref="0.02 1" solimp="0.9 0.99 0.001" friction="3 0.1 0.1" condim="4" priority="1"/>
+							  <site name="left_pad" pos="0.01 0 0.01" size="0.005" rgba="1 0 0 1"/>
+							</body>
+						  </body>
+						  
+						</body>
+						
+						<body name="truss_arm_1" pos="-0.0074 0.0 0.0715">
+                          <inertial mass="0.05" pos="0 0 0" diaginertia="0.001 0.001 0.001"/>
+						  <joint name="gripper_joint_3" pos="0 0 0" axis="0 1 0" damping="1" frictionloss="0.01" armature="0.01"/>
+                          <geom pos="0 0 0" type="mesh" mesh="truss_arm" material="black"/>
+						  <site name="truss1_hinge" pos="-0.0257 0 0.0488" size="0.001" rgba="0 1 0 1"/>
+						</body>
+						
+						<body name="moment_arm_2" pos="0.017 0.0 0.055" quat="0 0 0 1">
+                          <inertial mass="0.1" pos="0 0 0" diaginertia="0.001 0.001 0.001"/>
+						  <joint name="gripper_joint_4" pos="0 0 0" axis="0 -1 0" range="-0.6 0.45" damping="1" frictionloss="0.01" armature="0.01"/>
+                          <geom pos="0 0 0" type="mesh" mesh="moment_arm" material="black"/>
+						  
+						  <body name="finger_tip_2" pos="-0.01605 0.0 0.06517">
+                            <inertial mass="0.1" pos="0 0 0" diaginertia="0.001 0.001 0.001"/>
+						    <joint name="gripper_joint_5" pos="-0.0095 0 -0.0166" axis="0 -1 0" damping="1" frictionloss="0.01" armature="0.01"/>
+                            <geom pos="0 0 0" type="mesh" mesh="finger_tip" material="silver"/>
+							<site name="tip2_hinge" pos="0 0 0" size="0.001" rgba="1 0 0 1"/>
+							
+							<body name="gripper_tip_2" pos="0.0308 0 0.0175" quat="1 0 0 0">
+                              <inertial mass="0.1" pos="0 0 0" diaginertia="0.001 0.001 0.001"/>
+                              <geom pos="0 0 0" type="mesh" mesh="gripper_tip" material="black" solref="0.02 1" solimp="0.9 0.99 0.001" friction="3 0.1 0.1" condim="4" priority="1" />
+							  <site name="right_pad" pos="0.01 0 0.01" size="0.005" rgba="0 1 0 1"/>
+							</body>
+						  </body>
+					    </body>
+						
+						<body name="truss_arm_2" pos="0.0074 0.0 0.0715" quat="0 0 0 1">
+                          <inertial mass="0.05" pos="0 0 0" diaginertia="0.001 0.001 0.001"/>
+						  <joint name="gripper_joint_6" pos="0 0 0" axis="0 -1 0" damping="1" frictionloss="0.01" armature="0.01"/>
+                          <geom pos="0 0 0" type="mesh" mesh="truss_arm" material="black"/>
+						  <site name="truss2_hinge" pos="-0.0257 0.0 0.0488" size="0.001" rgba="0 1 0 1"/>
+						</body>
+
+				      </body>
+                    </body>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+  
+   <equality>
+     <connect body1="finger_tip_1" body2="truss_arm_1" anchor="0 0 0" solref="0.005 1" solimp="0.95 0.99 0.001"/>
+     <connect body1="finger_tip_2" body2="truss_arm_2" anchor="0 0 0" solref="0.005 1" solimp="0.95 0.99 0.001"/>
+     <joint joint1="gripper_joint_1" joint2="gripper_joint_4" polycoef="0 -1 0 0 0"/>
+  </equality>
+  
+  <contact>
+    <exclude body1="ur_base" body2="link1_11"/>    
+  <exclude body1="link1_11" body2="link2_11"/>
+  <exclude body1="link2_11" body2="link3_11"/>
+  <exclude body1="link3_11" body2="link4_11"/>
+  <exclude body1="link4_11" body2="link5_11"/>
+  <exclude body1="link5_11" body2="link6_11"/>
+  
+  <exclude body1="link6_11" body2="rg2_bracket"/>
+  <exclude body1="rg2_bracket" body2="gripper_body"/>
+  
+  <exclude body1="gripper_body" body2="moment_arm_1"/>
+  <exclude body1="gripper_body" body2="moment_arm_2"/>
+  <exclude body1="gripper_body" body2="truss_arm_1"/>
+  <exclude body1="gripper_body" body2="truss_arm_2"/>
+  <exclude body1="moment_arm_1" body2="finger_tip_1"/>
+  <exclude body1="moment_arm_2" body2="finger_tip_2"/>
+  <exclude body1="moment_arm_1" body2="truss_arm_1"/>
+  <exclude body1="moment_arm_2" body2="truss_arm_2"/>
+  <exclude body1="finger_tip_1" body2="truss_arm_1"/>
+  <exclude body1="finger_tip_2" body2="truss_arm_2"/>
+  </contact>
+  
+  <actuator>
+    <position name="act_joint1" joint="revolute_joint_1" kp="500" ctrlrange="-6.28 6.28" forcerange="-150 150"/>
+    <position name="act_joint2" joint="revolute_joint_2" kp="500" ctrlrange="-6.28 6.28" forcerange="-150 150"/>
+    <position name="act_joint3" joint="revolute_joint_3" kp="500" ctrlrange="-6.28 6.28" forcerange="-150 150"/>
+    <position name="act_joint4" joint="revolute_joint_4" kp="200" ctrlrange="-6.28 6.28" forcerange="-50 50"/>
+    <position name="act_joint5" joint="revolute_joint_5" kp="200" ctrlrange="-6.28 6.28" forcerange="-50 50"/>
+    <position name="act_joint6" joint="revolute_joint_6" kp="200" ctrlrange="-6.28 6.28" forcerange="-50 50"/>
+    <position name="act_gripper" joint="gripper_joint_1" kp="1000" ctrlrange="-0.6 0.45" forcerange="-40 40"/>
+  </actuator>
+-->  
+</mujoco>

@@ -1,0 +1,13 @@
+# Optional parameters file for Intel rs_launch.py (merged by upstream launch).
+# Keys with dots must be quoted in YAML.
+
+enable_color: true
+enable_depth: true
+enable_infra1: false
+enable_infra2: false
+"rgb_camera.color_profile": "640x480x30"
+"depth_module.depth_profile": "640x480x30"
+enable_sync: true
+"align_depth.enable": true
+publish_tf: true
+"pointcloud.enable": false

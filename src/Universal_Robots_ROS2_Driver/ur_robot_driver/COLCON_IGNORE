@@ -1,0 +1,9 @@
+This package is ignored in this workspace build.
+
+Reason: the checked-out `Universal_Robots_ROS2_Driver` source expects a newer
+`ur_client_library` API than the one installed via apt on this machine.
+
+If you want to build the driver from source later, remove this file and align
+versions (either upgrade/build `ur_client_library` from source, or checkout a
+compatible driver tag).
+

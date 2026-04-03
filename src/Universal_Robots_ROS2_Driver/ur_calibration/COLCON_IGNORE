@@ -1,0 +1,5 @@
+This package is ignored in this workspace build.
+
+Reason: it depends on `ur_robot_driver`, which is intentionally ignored here
+due to an API mismatch with the system-installed `ur_client_library`.
+

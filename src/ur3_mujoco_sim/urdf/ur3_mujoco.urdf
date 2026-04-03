@@ -1,0 +1,117 @@
+<robot name="ur3_mujoco">
+  <link name="world"/>
+
+  <link name="base_link"/>
+  <joint name="world_joint" type="fixed">
+    <parent link="world"/>
+    <child link="base_link"/>
+  </joint>
+
+  <!-- Minimal kinematic chain for ros2_control state publishing.
+       Joint names MUST match the MJCF joints exposed to control. -->
+  <link name="link1"/>
+  <joint name="actuator1" type="revolute">
+    <parent link="base_link"/>
+    <child link="link1"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-6.283" upper="6.283" effort="200" velocity="3.0"/>
+  </joint>
+
+  <link name="link2"/>
+  <joint name="actuator2" type="revolute">
+    <parent link="link1"/>
+    <child link="link2"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-6.283" upper="6.283" effort="200" velocity="3.0"/>
+  </joint>
+
+  <link name="link3"/>
+  <joint name="actuator3" type="revolute">
+    <parent link="link2"/>
+    <child link="link3"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-3.142" upper="3.142" effort="150" velocity="3.0"/>
+  </joint>
+
+  <link name="link4"/>
+  <joint name="actuator4" type="revolute">
+    <parent link="link3"/>
+    <child link="link4"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-6.283" upper="6.283" effort="100" velocity="3.0"/>
+  </joint>
+
+  <link name="link5"/>
+  <joint name="actuator5" type="revolute">
+    <parent link="link4"/>
+    <child link="link5"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-6.283" upper="6.283" effort="100" velocity="3.0"/>
+  </joint>
+
+  <link name="link6"/>
+  <joint name="actuator6" type="revolute">
+    <parent link="link5"/>
+    <child link="link6"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-6.283" upper="6.283" effort="80" velocity="3.0"/>
+  </joint>
+
+  <ros2_control name="MujocoSystem" type="system">
+    <hardware>
+      <plugin>mujoco_ros2_simulation/MujocoSystemInterface</plugin>
+      <param name="mujoco_model">$(find ur3_mujoco_sim)/mjcf/ur3_scene_table.xml</param>
+      <!-- Keep CPU load reasonable on older laptops -->
+      <param name="sim_speed_factor">0.5</param>
+      <!-- Avoid creating a GLFW window / UI thread -->
+      <param name="headless">true</param>
+      <!-- Keep sensor loops very light (even if unused) -->
+      <param name="camera_publish_rate">0.2</param>
+      <param name="lidar_publish_rate">0.2</param>
+    </hardware>
+
+    <joint name="actuator1">
+      <command_interface name="position"/>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="actuator2">
+      <command_interface name="position"/>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="actuator3">
+      <command_interface name="position"/>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="actuator4">
+      <command_interface name="position"/>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="actuator5">
+      <command_interface name="position"/>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="actuator6">
+      <command_interface name="position"/>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+  </ros2_control>
+</robot>
+
