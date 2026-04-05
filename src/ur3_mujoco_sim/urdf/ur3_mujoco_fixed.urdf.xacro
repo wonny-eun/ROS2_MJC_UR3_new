@@ -45,6 +45,42 @@
   </xacro:ur_robot>
 
   <!--
+    D435i + rl_camera on wrist_3 (matches mjcf/UR3_RG2.xml: body d435i, camera pos 0 0 0.02, euler 0 -pi 0).
+    Cover mesh d435i_8 matches MuJoCo collision/visual shell. Optical frame for REP-103 / virtual_perception.
+  -->
+  <link name="d435i_mount_link"/>
+  <joint name="wrist_3_link_to_d435i_mount" type="fixed">
+    <parent link="wrist_3_link"/>
+    <child link="d435i_mount_link"/>
+    <origin xyz="0.02 0 0.05" rpy="0 1.5707963267948966 1.5707963267948966"/>
+  </joint>
+  <link name="rl_camera_frame">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://ur3_mujoco_sim/meshes/d435i_8.obj" scale="1 1 1"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://ur3_mujoco_sim/meshes/d435i_8.obj" scale="1 1 1"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="d435i_mount_to_rl_camera" type="fixed">
+    <parent link="d435i_mount_link"/>
+    <child link="rl_camera_frame"/>
+    <origin xyz="0 0 0.02" rpy="0 -3.141592653589793 0"/>
+  </joint>
+  <link name="camera_color_optical_frame"/>
+  <joint name="rl_camera_to_camera_color_optical" type="fixed">
+    <parent link="rl_camera_frame"/>
+    <child link="camera_color_optical_frame"/>
+    <origin xyz="0 0 0" rpy="-1.5707963267948966 0 -1.5707963267948966"/>
+  </joint>
+
+  <!--
     Scene props for RViz visualization.
     These mirror `mjcf/ur3_scene_table.xml` (same mesh files, same poses, no rotation).
   -->
@@ -68,26 +104,6 @@
     <origin xyz="0 0 0" rpy="0 0 0"/>
   </joint>
 
-  <link name="plate">
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry>
-        <mesh filename="package://ur3_mujoco_sim/meshes/plate.stl" scale="0.001 0.001 0.001"/>
-      </geometry>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry>
-        <mesh filename="package://ur3_mujoco_sim/meshes/plate.stl" scale="0.001 0.001 0.001"/>
-      </geometry>
-    </collision>
-  </link>
-  <joint name="world_to_plate" type="fixed">
-    <parent link="world"/>
-    <child link="plate"/>
-    <origin xyz="-0.3 0 0.4" rpy="0 0 0"/>
-  </joint>
-
   <link name="sphere">
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
@@ -106,26 +122,6 @@
     <parent link="world"/>
     <child link="sphere"/>
     <origin xyz="-0.3 0.08 0.425" rpy="0 0 0"/>
-  </joint>
-
-  <link name="cup">
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry>
-        <mesh filename="package://ur3_mujoco_sim/meshes/cup.stl" scale="0.001 0.001 0.001"/>
-      </geometry>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry>
-        <mesh filename="package://ur3_mujoco_sim/meshes/cup.stl" scale="0.001 0.001 0.001"/>
-      </geometry>
-    </collision>
-  </link>
-  <joint name="world_to_cup" type="fixed">
-    <parent link="world"/>
-    <child link="cup"/>
-    <origin xyz="-0.3 0.16 0.4" rpy="0 0 0"/>
   </joint>
 
   <link name="cylinder">

@@ -140,10 +140,10 @@
       		  <geom mesh="d435i_6" material="Black_Acrylic" class="visual"/>
       		  <geom mesh="d435i_7" material="RGB_Pupil" class="visual"/>
       		  <geom mesh="d435i_8" mass="0.072" material="Metal_Casing" class="visual"/>
-      		  <!-- collision: use mesh (same as visual shell); capsule+mesh is not a valid combo here -->
-      		  <geom class="collision" mesh="d435i_8"/>
+      		  <!-- No physics contacts: avoids spurious sim forces vs table/objects; MoveIt uses URDF collision instead. -->
+      		  <geom class="collision" mesh="d435i_8" contype="0" conaffinity="0"/>
       		  <!-- MuJoCo default camera resolution is 1x1 if omitted; ROS image would be unusable. -->
-		  <camera name="rl_camera" pos="0 0 0.02" euler="0 -3.14 0" fovy="60" resolution="640 480"/>
+		  <camera name="rl_camera" pos="0 0 0.02" euler="0 -3.14 0" fovy="42.5" resolution="640 480"/>
     		</body>
 
                 

@@ -19,9 +19,7 @@
       markrgb="0.9 0.9 0.92" width="512" height="512"/>
     <material name="ground_mat" texture="ground_tex" texuniform="true" texrepeat="10 10" reflectance="0.05"/>
     <mesh name="table_mesh" file="../meshes/table.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="plate_mesh" file="../meshes/plate.stl" scale="0.001 0.001 0.001"/>
     <mesh name="sphere_mesh" file="../meshes/sphere.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="cup_mesh" file="../meshes/cup.stl" scale="0.001 0.001 0.001"/>
     <mesh name="cylinder_mesh" file="../meshes/cylinder.stl" scale="0.001 0.001 0.001"/>
     <mesh name="box_mesh" file="../meshes/box.stl" scale="0.001 0.001 0.001"/>
     <material name="table_mesh_mat" rgba="0.42 0.30 0.18 1" specular="0.3" shininess="0.2"/>
@@ -53,24 +51,11 @@
     </body>
 
     <!-- Objects on/near the table -->
-    <body name="plate_obj" pos="-0.3 0 0.4">
-      <freejoint/>
-      <inertial pos="0 0 0" mass="0.2" diaginertia="0.001 0.001 0.001"/>
-      <geom name="plate_geom" type="mesh" mesh="plate_mesh" pos="0 0 0" material="object_mesh_mat" 
-            condim="4" friction="1 0.05 0.001" solimp="0.9 0.95 0.001 0.5 2" solref="0.02 1" contype="1" conaffinity="1"/>
-    </body>
 
     <body name="sphere_obj" pos="-0.3 0.08 0.4">
       <freejoint/>
       <inertial pos="0 0 0" mass="0.1" diaginertia="0.001 0.001 0.001"/>
       <geom name="sphere_geom" type="mesh" mesh="sphere_mesh" pos="0 0 0.025" material="object_mesh_mat" 
-            condim="4" friction="1 0.05 0.001" solimp="0.9 0.95 0.001 0.5 2" solref="0.02 1" contype="1" conaffinity="1"/>
-    </body>
-
-    <body name="cup_obj" pos="-0.3 0.16 0.4">
-      <freejoint/>
-      <inertial pos="0 0 0" mass="0.1" diaginertia="0.001 0.001 0.001"/>
-      <geom name="cup_geom" type="mesh" mesh="cup_mesh" pos="0 0 0" material="object_mesh_mat" 
             condim="4" friction="1 0.05 0.001" solimp="0.9 0.95 0.001 0.5 2" solref="0.02 1" contype="1" conaffinity="1"/>
     </body>
 
