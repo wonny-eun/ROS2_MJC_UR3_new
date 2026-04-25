@@ -31,6 +31,8 @@ setup(
             'virtual_perception_node = ur3_rl_bridge.virtual_perception_node:main',
             'mujoco_object_manager_node = ur3_rl_bridge.mujoco_object_manager_node:main',
             'mujoco_rl_camera_preview = ur3_rl_bridge.mujoco_rl_camera_preview_node:main',
+            'multi_view_cloud_fusion_node = ur3_rl_bridge.multi_view_cloud_fusion_node:main',
+            'yolo_object_preview = ur3_rl_bridge.yolo_object_preview_node:main',
         ],
     },
 )

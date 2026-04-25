@@ -23,6 +23,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #include <hardware_interface/handle.hpp>
@@ -34,6 +35,8 @@
 #include <rclcpp_lifecycle/node_interfaces/lifecycle_node_interface.hpp>
 #include <rclcpp_lifecycle/state.hpp>
 #include <rosgraph_msgs/msg/clock.hpp>
+#include <tf2_ros/transform_broadcaster.h>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include <mujoco/mujoco.h>
 
@@ -183,6 +186,8 @@ private:
    * This enables pausing and restarting of the simulation through the application window.
    */
   void publish_clock();
+  void publish_object_transforms();
+  void publish_object_markers();
 
   // System information
   hardware_interface::HardwareInfo system_info_;
@@ -215,6 +220,14 @@ private:
 
   // Primary clock publisher for the world
   std::shared_ptr<rclcpp::Publisher<rosgraph_msgs::msg::Clock>> clock_publisher_;
+  std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
+  std::shared_ptr<rclcpp::Publisher<visualization_msgs::msg::MarkerArray>> object_marker_publisher_;
+  std::vector<std::pair<std::string, std::string>> object_tf_name_pairs_;
+  std::unordered_map<std::string, int> object_body_ids_;
+  std::unordered_map<std::string, int> object_geom_ids_;
+  std::unordered_map<std::string, std::string> object_mesh_resource_;
+  double object_tf_publish_period_s_{ 1.0 / 60.0 };
+  double object_tf_last_pub_sim_time_{ -1.0 };
 
   // Containers for RGB-D cameras
   std::unique_ptr<MujocoCameras> cameras_;

@@ -15,6 +15,9 @@ find_package(hardware_interface REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
 find_package(Threads REQUIRED)
 
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
@@ -120,6 +123,9 @@ ament_target_dependencies(mujoco_ros2_simulation
   rclcpp
   rclcpp_lifecycle
   sensor_msgs
+  tf2_ros
+  geometry_msgs
+  visualization_msgs
 )
 target_link_libraries(mujoco_ros2_simulation
   ${MUJOCO_LIB}

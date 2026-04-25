@@ -41,19 +41,39 @@
     visual_parameters_file="$(arg visual_params)"
     generate_ros2_control_tag="false"
     >
-    <origin xyz="0 0 0.4" rpy="0 0 -1.5708" />
+    <origin xyz="0 0 0.78" rpy="0 0 -1.5708" />
   </xacro:ur_robot>
 
   <!--
-    D435i + rl_camera mounted on flange (same global pose as MJCF body d435i on link6_2_1; see UR3_RG2.xml).
-    Parent is flange — not wrist_3_link — so wrist_3_link keeps the standard UR subtree only (MoveIt/RViz).
-    Transform: inv(flange_from_wrist_3) * (old mount from wrist_3).
+    gripper_test + D435i + rl_camera: matches MJCF UR3_RG2.xml (gripper_link on link6_2_1, d435i on gripper_link).
+    gripper_link is fixed to tool0 (same TCP as MJCF gripper body). Camera offset on gripper: pos 0.05 0 0.07, euler 0 1.57 1.57.
+    Mesh visual uses MJCF geom quat 0.5 0.5 0.5 0.5 → rpy 1.5708 0 1.5708 (fixed XYZ).
   -->
+  <link name="gripper_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="1.5707963267948966 0 1.5707963267948966"/>
+      <geometry>
+        <mesh filename="package://ur3_mujoco_sim/meshes/gripper_test.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="1.5707963267948966 0 1.5707963267948966"/>
+      <geometry>
+        <mesh filename="package://ur3_mujoco_sim/meshes/gripper_test.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="tool0_to_gripper_link" type="fixed">
+    <parent link="$(arg tf_prefix)tool0"/>
+    <child link="gripper_link"/>
+    <origin xyz="0 0 0" rpy="-1.5707963267948966 -1.5707963267948966 0"/>
+  </joint>
   <link name="d435i_mount_link"/>
-  <joint name="flange_to_d435i_mount" type="fixed">
-    <parent link="$(arg tf_prefix)flange"/>
+  <!-- Parent must be gripper_link so the chain matches MJCF (d435i is nested under gripper_link, not parallel to it). -->
+  <joint name="gripper_to_d435i_mount" type="fixed">
+    <parent link="gripper_link"/>
     <child link="d435i_mount_link"/>
-    <origin xyz="0.005 0 0.05" rpy="-1.5708 3.14159 1.5708"/>
+    <origin xyz="0.07 0 0.07" rpy="1.5707963267948966 0 -1.5707963267948966"/>
   </joint>
   <link name="rl_camera_frame">
     <visual>
@@ -88,15 +108,27 @@
   
   <link name="table">
     <visual>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <origin xyz="-0.441108 -0.28111 0" rpy="0 0 -1.5708"/>
       <geometry>
         <mesh filename="package://ur3_mujoco_sim/meshes/table.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </visual>
+    <visual>
+      <origin xyz="-0.441108 -0.28111 0.78" rpy="0 0 -1.5708"/>
+      <geometry>
+        <mesh filename="package://ur3_mujoco_sim/meshes/table_upper.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
     <collision>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <origin xyz="-0.441108 -0.28111 0" rpy="0 0 -1.5708"/>
       <geometry>
         <mesh filename="package://ur3_mujoco_sim/meshes/table.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.441108 -0.28111 0.78" rpy="0 0 -1.5708"/>
+      <geometry>
+        <mesh filename="package://ur3_mujoco_sim/meshes/table_upper.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -104,66 +136,6 @@
     <parent link="world"/>
     <child link="table"/>
     <origin xyz="0 0 0" rpy="0 0 0"/>
-  </joint>
-
-  <link name="sphere">
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry>
-        <mesh filename="package://ur3_mujoco_sim/meshes/sphere.stl" scale="0.001 0.001 0.001"/>
-      </geometry>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry>
-        <mesh filename="package://ur3_mujoco_sim/meshes/sphere.stl" scale="0.001 0.001 0.001"/>
-      </geometry>
-    </collision>
-  </link>
-  <joint name="world_to_sphere" type="fixed">
-    <parent link="world"/>
-    <child link="sphere"/>
-    <origin xyz="-0.3 0.08 0.425" rpy="0 0 0"/>
-  </joint>
-
-  <link name="cylinder">
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry>
-        <mesh filename="package://ur3_mujoco_sim/meshes/cylinder.stl" scale="0.001 0.001 0.001"/>
-      </geometry>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry>
-        <mesh filename="package://ur3_mujoco_sim/meshes/cylinder.stl" scale="0.001 0.001 0.001"/>
-      </geometry>
-    </collision>
-  </link>
-  <joint name="world_to_cylinder" type="fixed">
-    <parent link="world"/>
-    <child link="cylinder"/>
-    <origin xyz="-0.3 -0.08 0.4" rpy="0 0 0"/>
-  </joint>
-
-  <link name="box">
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry>
-        <mesh filename="package://ur3_mujoco_sim/meshes/box.stl" scale="0.001 0.001 0.001"/>
-      </geometry>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry>
-        <mesh filename="package://ur3_mujoco_sim/meshes/box.stl" scale="0.001 0.001 0.001"/>
-      </geometry>
-    </collision>
-  </link>
-  <joint name="world_to_box" type="fixed">
-    <parent link="world"/>
-    <child link="box"/>
-    <origin xyz="-0.3 -0.16 0.4" rpy="0 0 0"/>
   </joint>
 
   <!-- MuJoCo ros2_control system interface -->

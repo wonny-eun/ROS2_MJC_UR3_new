@@ -39,6 +39,8 @@
 #include <hardware_interface/types/hardware_interface_type_values.hpp>
 #include <pluginlib/class_list_macros.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 #include "lodepng.h"
 
 #define MUJOCO_PLUGIN_DIR "mujoco_plugin"
@@ -533,6 +535,7 @@ hardware_interface::CallbackReturn MujocoSystemInterface::on_init(const hardware
   // Match rclcpp::ClockQoS so /clock is compatible with use_sim_time subscribers (joint_states stamps).
   clock_publisher_ =
       mujoco_node_->create_publisher<rosgraph_msgs::msg::Clock>("/clock", rclcpp::ClockQoS());
+  // Object pose mirroring to RViz has been disabled by request.
 
   // Ready cameras
   RCLCPP_INFO(rclcpp::get_logger("MujocoSystemInterface"), "Initializing cameras...");
@@ -1455,6 +1458,16 @@ void MujocoSystemInterface::publish_clock()
   rosgraph_msgs::msg::Clock sim_time_msg;
   sim_time_msg.clock = sim_time_ros;
   clock_publisher_->publish(sim_time_msg);
+}
+
+void MujocoSystemInterface::publish_object_transforms()
+{
+  return;
+}
+
+void MujocoSystemInterface::publish_object_markers()
+{
+  return;
 }
 
 void MujocoSystemInterface::get_model(mjModel*& dest)

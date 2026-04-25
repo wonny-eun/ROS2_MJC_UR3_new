@@ -13,6 +13,8 @@
   <depend>tf_transformations</depend>
   <depend>std_srvs</depend>
   <depend>sensor_msgs</depend>
+  <exec_depend>python3-opencv</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
   <exec_depend>python3-matplotlib</exec_depend>
   <depend>control_msgs</depend>
   <depend>trajectory_msgs</depend>
