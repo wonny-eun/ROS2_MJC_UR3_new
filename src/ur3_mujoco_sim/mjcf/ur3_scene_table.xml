@@ -30,15 +30,16 @@
     <mesh name="table_upper_col_mesh" file="../meshes/table_upper.stl" scale="0.001 0.001 0.001"/>
     <material name="table_mesh_mat" rgba="0.42 0.30 0.18 1" specular="0.3" shininess="0.2"/>
     <material name="table_green" rgba="0.2 0.7 0.3  1" shininess="0" specular="0"/>
-    <material name="aluminum_1_mat" rgba="0.42 0.42 0.42 1" shininess="0.9" specular="1" reflectance="0.8" />
-    <material name="copper_mat" rgba="0.72 0.45 0.20 1" shininess="0.9" specular="1" reflectance="0.8" />
-    <material name="aluminum_2_mat" rgba="0.45 0.45 0.45 1" shininess="0.9" specular="1" reflectance="0.8" />
+    <material name="aluminum_1_mat" rgba="0.7 0.7 0.7 1" shininess="1" specular="1" reflectance="1" />
+    <material name="copper_mat" rgba="0.80 0.58 0.35 1" shininess="1" specular="1" reflectance="1" />
+    <material name="aluminum_2_mat" rgba="0.8 0.8 0.8 1" shininess="1" specular="1" reflectance="1" />
   </asset>
 
   <!-- Scene: lights, floor, table (merged with robot worldbody from include) -->
   <worldbody>
-    <light name="key" pos="1.0 0.6 1.2" dir="-0.6 -0.35 -0.72" directional="true" diffuse="0.95 0.92 0.88" specular="0.3 0.3 0.3"/>
+    <light name="key" pos="1.0 0.6 1.2" dir="-0.6 -0.35 -0.72" directional="true" diffuse="0.75 0.92 0.88" specular="0.3 0.3 0.3"/>
     <light name="fill" pos="-0.8 0.9 0.9" dir="0.45 -0.55 -0.7" directional="true" diffuse="0.35 0.38 0.45"/>
+    <light name="rim" pos="0.0 1.0 -1.5" dir="0.0 -0.5 1.0" directional="true" diffuse="0.4 0.4 0.4" specular="0.5 0.5 0.5"/>
 
     <!-- Large floor slab (xy plane near z=0) -->
     <geom name="scene_floor" type="box" pos="0 0 -0.002" size="5 5 0.002" material="ground_mat" 
@@ -76,7 +77,7 @@
     <body name="cylinder_1_obj" pos="-0.3 0.08 0.9">
       <!-- Do not inherit UR3_RG2 default joint damping=10 (would heavily damp free motion). -->
       <joint type="free" damping="0" frictionloss="0.0001" armature="0.0001"/>
-      <inertial pos="0 0 0" mass="0.2" diaginertia="0.00008 0.00008 0.00008"/>
+      <inertial pos="0 0 0.0185" mass="0.059747" diaginertia="10.676195e-06 10.676194e-06 7.761395e-06"/>
       <geom name="cylinder_1_vis" type="mesh" mesh="cylinder_1_mesh" pos="0 0 0" material="aluminum_1_mat"
             contype="0" conaffinity="0"/>
       <geom name="cylinder_1_col" type="mesh" mesh="cylinder_1_col_mesh" pos="0 0 0"
@@ -85,8 +86,8 @@
     </body>
 
     <body name="cylinder_2_obj" pos="-0.3 -0.08 0.9">
-      <joint type="free" damping="0" frictionloss="0.0001" armature="0.0001"/>
-      <inertial pos="0 0 0.010337" mass="0.07781" diaginertia="7.401e-06 7.401e-06 9.390e-06"/>
+      <joint type="free" damping="0.001" frictionloss="0.0001" armature="0.0001"/>
+      <inertial pos="0 0 0.010337" mass="0.04781" diaginertia="7.401e-06 7.401e-06 9.390e-06"/>
       <geom name="cylinder_2_vis" type="mesh" mesh="cylinder_2_mesh" pos="0 0 0" material="copper_mat"
             contype="0" conaffinity="0"/>
       <geom name="cylinder_2_col" type="mesh" mesh="cylinder_2_col_mesh" pos="0 0 0"
@@ -95,7 +96,7 @@
     </body>
 
     <body name="square_1_obj" pos="-0.22 0.08 0.9">
-      <joint type="free" damping="0" frictionloss="0.0001" armature="0.0001"/>
+      <joint type="free" damping="0.001" frictionloss="0.0001" armature="0.0001"/>
       <inertial pos="-0.007225 0 0.01" mass="0.060153" diaginertia="4.291e-06 1.339e-05 1.334e-05"/>
       <geom name="square_1_vis" type="mesh" mesh="square_1_mesh" pos="0 0 0" material="aluminum_2_mat"
             contype="0" conaffinity="0"/>

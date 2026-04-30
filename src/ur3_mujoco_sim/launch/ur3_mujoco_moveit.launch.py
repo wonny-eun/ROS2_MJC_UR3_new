@@ -120,9 +120,14 @@ def generate_launch_description():
     enable_virtual_perception = LaunchConfiguration("enable_virtual_perception")
     enable_object_manager = LaunchConfiguration("enable_object_manager")
     enable_mujoco_rl_camera_preview = LaunchConfiguration("enable_mujoco_rl_camera_preview")
+    enable_camera_noise = LaunchConfiguration("enable_camera_noise")
     enable_yolo_object_preview = LaunchConfiguration("enable_yolo_object_preview")
+    enable_handeye_tf = LaunchConfiguration("enable_handeye_tf")
+    handeye_file = LaunchConfiguration("handeye_file")
     yolo_model_path = LaunchConfiguration("yolo_model_path")
     yolo_target_class = LaunchConfiguration("yolo_target_class")
+    camera_rgb_topic = "/rl_camera/noisy/color"
+    camera_depth_topic = "/rl_camera/noisy/depth"
     camera_publish_rate = LaunchConfiguration("camera_publish_rate")
     lidar_publish_rate = LaunchConfiguration("lidar_publish_rate")
     sim_speed_factor = LaunchConfiguration("sim_speed_factor")
@@ -329,7 +334,36 @@ def generate_launch_description():
         ],
     )
 
-    # OpenCV windows: /rl_camera/color (+ depth) from mujoco_node publishers.
+    noisy_camera_node = Node(
+        package="ur3_rl_bridge",
+        executable="noisy_camera_node",
+        output="screen",
+        condition=IfCondition(enable_camera_noise),
+        parameters=[
+            {"rgb_in_topic": "/rl_camera/color"},
+            {"depth_in_topic": "/rl_camera/depth"},
+            {"rgb_out_topic": camera_rgb_topic},
+            {"depth_out_topic": camera_depth_topic},
+            {"rgb_noise_sigma": 1.0},
+            {"rgb_salt_pepper_prob": 0.0001},
+            {"rgb_brightness_jitter": 1.0},
+            {"rgb_contrast_jitter": 0.01},
+            {"depth_noise_sigma_m": 0.001},
+            {"depth_quant_step_m": 0.001},
+            {"depth_dropout_prob": 0.001},
+            {"depth_edge_dropout_prob": 0.005},
+            {"depth_edge_threshold_m": 0.02},
+            {"depth_shadow_enable": True},
+            {"depth_shadow_direction": "left"},
+            {"depth_shadow_k_px_m": 3.0},
+            {"depth_shadow_min_radius_px": 1},
+            {"depth_shadow_max_radius_px": 8},
+            {"depth_shadow_edge_threshold_m": 0.015},
+            {"depth_shadow_max_depth_m": 4.0},
+        ],
+    )
+
+    # OpenCV windows: noisy camera topics derived from mujoco_node publishers.
     # Runs even when MuJoCo is headless (no GLFW sim window) as long as DISPLAY is set for OpenCV.
     rl_camera_preview_node = Node(
         package="ur3_rl_bridge",
@@ -337,8 +371,8 @@ def generate_launch_description():
         output="screen",
         condition=IfCondition(enable_mujoco_rl_camera_preview),
         parameters=[
-            {"rgb_topic": "/rl_camera/color"},
-            {"depth_topic": "/rl_camera/depth"},
+            {"rgb_topic": camera_rgb_topic},
+            {"depth_topic": camera_depth_topic},
             {"show_rgb": False},
             {"show_depth": True},
             {"display_hz": 30.0},
@@ -351,7 +385,7 @@ def generate_launch_description():
         output="screen",
         condition=IfCondition(enable_yolo_object_preview),
         parameters=[
-            {"rgb_topic": "/rl_camera/color"},
+            {"rgb_topic": camera_rgb_topic},
             {"model_path": yolo_model_path},
             {"target_class": yolo_target_class},
             {"display_hz": 10.0},
@@ -360,6 +394,16 @@ def generate_launch_description():
             {"show_window": True},
             {"publish_annotated": True},
             {"annotated_topic": "/yolo/annotated"},
+        ],
+    )
+
+    handeye_tf_publisher_node = Node(
+        package="ur3_rl_bridge",
+        executable="handeye_tf_publisher",
+        output="screen",
+        condition=IfCondition(enable_handeye_tf),
+        parameters=[
+            {"calibration_file": handeye_file},
         ],
     )
 
@@ -380,9 +424,26 @@ def generate_launch_description():
                 description="If true, open OpenCV depth preview for rl_camera (requires DISPLAY).",
             ),
             DeclareLaunchArgument(
+                "enable_camera_noise",
+                default_value="true",
+                description="If true, publish noisy /rl_camera/noisy/color and /rl_camera/noisy/depth topics.",
+            ),
+            DeclareLaunchArgument(
                 "enable_yolo_object_preview",
                 default_value="true",
-                description="If true, run YOLO on /rl_camera/color and open an annotated OpenCV window.",
+                description="If true, run YOLO on noisy color camera and open an annotated OpenCV window.",
+            ),
+            DeclareLaunchArgument(
+                "enable_handeye_tf",
+                default_value="false",
+                description="If true, publish tool0 -> camera optical frame from the selected hand-eye YAML.",
+            ),
+            DeclareLaunchArgument(
+                "handeye_file",
+                default_value=PathJoinSubstitution(
+                    [FindPackageShare("ur3_rl_bridge"), "config", "handeye", "d435i_on_gripper.yaml"]
+                ),
+                description="YAML file containing the hand-eye transform from tool0 to the camera optical frame.",
             ),
             DeclareLaunchArgument(
                 "yolo_model_path",
@@ -417,6 +478,8 @@ def generate_launch_description():
             rviz_node,
             virtual_perception_node,
             object_manager_node,
+            handeye_tf_publisher_node,
+            noisy_camera_node,
             rl_camera_preview_node,
             yolo_object_preview_node,
         ]

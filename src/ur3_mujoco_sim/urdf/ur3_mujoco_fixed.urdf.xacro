@@ -22,6 +22,10 @@
   <xacro:arg name="sim_speed_factor" default="1.0"/>
   <xacro:arg name="headless" default="false"/>
   <xacro:arg name="camera_publish_rate" default="5.0"/>
+  <xacro:arg name="camera_rgb_noise_sigma" default="0.0"/>
+  <xacro:arg name="camera_depth_noise_sigma_m" default="0.0"/>
+  <xacro:arg name="camera_depth_quant_step_m" default="0.0"/>
+  <xacro:arg name="camera_depth_dropout_prob" default="0.0"/>
   <xacro:arg name="lidar_publish_rate" default="5.0"/>
 
   <!-- Official UR model macros -->
@@ -41,7 +45,7 @@
     visual_parameters_file="$(arg visual_params)"
     generate_ros2_control_tag="false"
     >
-    <origin xyz="0 0 0.78" rpy="0 0 -1.5708" />
+    <origin xyz="0 0 0.78" rpy="0 0 -1.5707963267948966" />
   </xacro:ur_robot>
 
   <!--
@@ -51,13 +55,13 @@
   -->
   <link name="gripper_link">
     <visual>
-      <origin xyz="0 0 0" rpy="1.5707963267948966 0 1.5707963267948966"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
         <mesh filename="package://ur3_mujoco_sim/meshes/gripper_test.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </visual>
     <collision>
-      <origin xyz="0 0 0" rpy="1.5707963267948966 0 1.5707963267948966"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
         <mesh filename="package://ur3_mujoco_sim/meshes/gripper_test.stl" scale="0.001 0.001 0.001"/>
       </geometry>
@@ -66,39 +70,39 @@
   <joint name="tool0_to_gripper_link" type="fixed">
     <parent link="$(arg tf_prefix)tool0"/>
     <child link="gripper_link"/>
-    <origin xyz="0 0 0" rpy="-1.5707963267948966 -1.5707963267948966 0"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
   </joint>
   <link name="d435i_mount_link"/>
   <!-- Parent must be gripper_link so the chain matches MJCF (d435i is nested under gripper_link, not parallel to it). -->
   <joint name="gripper_to_d435i_mount" type="fixed">
     <parent link="gripper_link"/>
     <child link="d435i_mount_link"/>
-    <origin xyz="0.07 0 0.07" rpy="1.5707963267948966 0 -1.5707963267948966"/>
+    <origin xyz="0 0.07 0.05" rpy="0 0 0"/>
   </joint>
   <link name="rl_camera_frame">
     <visual>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <origin xyz="0.0325 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://ur3_mujoco_sim/meshes/d435i_8.obj" scale="1 1 1"/>
+        <mesh filename="package://ur3_mujoco_sim/meshes/d435i_8.obj" scale="0.1 0.1 0.1"/>
       </geometry>
     </visual>
     <collision>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <origin xyz="0.0325 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://ur3_mujoco_sim/meshes/d435i_8.obj" scale="1 1 1"/>
+        <mesh filename="package://ur3_mujoco_sim/meshes/d435i_8.obj" scale="0.1 0.1 0.1"/>
       </geometry>
     </collision>
   </link>
   <joint name="d435i_mount_to_rl_camera" type="fixed">
     <parent link="d435i_mount_link"/>
     <child link="rl_camera_frame"/>
-    <origin xyz="0 0 0.02" rpy="0 -3.141592653589793 0"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
   </joint>
   <link name="camera_color_optical_frame"/>
   <joint name="rl_camera_to_camera_color_optical" type="fixed">
     <parent link="rl_camera_frame"/>
     <child link="camera_color_optical_frame"/>
-    <origin xyz="0 0 0" rpy="-1.5707963267948966 0 -1.5707963267948966"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
   </joint>
 
   <!--
@@ -146,6 +150,10 @@
       <param name="sim_speed_factor">$(arg sim_speed_factor)</param>
       <param name="headless">$(arg headless)</param>
       <param name="camera_publish_rate">$(arg camera_publish_rate)</param>
+      <param name="camera_rgb_noise_sigma">$(arg camera_rgb_noise_sigma)</param>
+      <param name="camera_depth_noise_sigma_m">$(arg camera_depth_noise_sigma_m)</param>
+      <param name="camera_depth_quant_step_m">$(arg camera_depth_quant_step_m)</param>
+      <param name="camera_depth_dropout_prob">$(arg camera_depth_dropout_prob)</param>
       <param name="lidar_publish_rate">$(arg lidar_publish_rate)</param>
     </hardware>
 

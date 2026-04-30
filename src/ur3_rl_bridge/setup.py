@@ -14,6 +14,8 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
+        (os.path.join('share', package_name, 'config', 'handeye'), glob('config/handeye/*.yaml')),
+        (os.path.join('share', package_name, 'config', 'tcp'), glob('config/tcp/*.yaml')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -33,6 +35,9 @@ setup(
             'mujoco_rl_camera_preview = ur3_rl_bridge.mujoco_rl_camera_preview_node:main',
             'multi_view_cloud_fusion_node = ur3_rl_bridge.multi_view_cloud_fusion_node:main',
             'yolo_object_preview = ur3_rl_bridge.yolo_object_preview_node:main',
+            'noisy_camera_node = ur3_rl_bridge.noisy_camera_node:main',
+            'handeye_tf_publisher = ur3_rl_bridge.handeye_tf_publisher_node:main',
+            'tcp_task_pose_test = ur3_rl_bridge.tcp_task_pose_test_node:main',
         ],
     },
 )

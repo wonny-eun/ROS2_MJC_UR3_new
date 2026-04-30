@@ -441,6 +441,10 @@ hardware_interface::CallbackReturn MujocoSystemInterface::on_init(const hardware
 
   // Pull the camera publish rate out of the info, if present, otherwise default to 5 hz.
   const auto camera_publish_rate = std::stod(get_parameter("camera_publish_rate").value_or("5.0"));
+  const auto camera_rgb_noise_sigma = std::stod(get_parameter("camera_rgb_noise_sigma").value_or("0.0"));
+  const auto camera_depth_noise_sigma_m = std::stod(get_parameter("camera_depth_noise_sigma_m").value_or("0.0"));
+  const auto camera_depth_quant_step_m = std::stod(get_parameter("camera_depth_quant_step_m").value_or("0.0"));
+  const auto camera_depth_dropout_prob = std::stod(get_parameter("camera_depth_dropout_prob").value_or("0.0"));
   // Pull the lidar publish rate out of the info, if present, otherwise default to 5 hz.
   const auto lidar_publish_rate = std::stod(get_parameter("lidar_publish_rate").value_or("5.0"));
 
@@ -539,7 +543,9 @@ hardware_interface::CallbackReturn MujocoSystemInterface::on_init(const hardware
 
   // Ready cameras
   RCLCPP_INFO(rclcpp::get_logger("MujocoSystemInterface"), "Initializing cameras...");
-  cameras_ = std::make_unique<MujocoCameras>(mujoco_node_, sim_mutex_, mj_data_, mj_model_, camera_publish_rate);
+  cameras_ = std::make_unique<MujocoCameras>(mujoco_node_, sim_mutex_, mj_data_, mj_model_, camera_publish_rate,
+                                             camera_rgb_noise_sigma, camera_depth_noise_sigma_m,
+                                             camera_depth_quant_step_m, camera_depth_dropout_prob);
   cameras_->register_cameras(info);
 
   // Configure Lidar sensors

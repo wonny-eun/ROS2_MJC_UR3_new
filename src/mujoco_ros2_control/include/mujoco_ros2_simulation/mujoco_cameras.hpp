@@ -80,7 +80,8 @@ public:
    * @param camera_publish_rate The rate to publish all camera images, for now all images are published at the same rate.
    */
   explicit MujocoCameras(rclcpp::Node::SharedPtr& node, std::recursive_mutex* sim_mutex, mjData* mujoco_data,
-                         mjModel* mujoco_model, double camera_publish_rate);
+                         mjModel* mujoco_model, double camera_publish_rate, double rgb_noise_sigma,
+                         double depth_noise_sigma_m, double depth_quant_step_m, double depth_dropout_prob);
 
   /**
    * @brief Starts the image processing thread in the background.
@@ -122,6 +123,10 @@ private:
 
   // Image publishing rate
   double camera_publish_rate_;
+  double rgb_noise_sigma_;
+  double depth_noise_sigma_m_;
+  double depth_quant_step_m_;
+  double depth_dropout_prob_;
 
   // Rendering options for the cameras, currently hard coded to defaults
   mjvOption mjv_opt_;

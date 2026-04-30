@@ -1,0 +1,16 @@
+# Eye-in-hand calibration result for the D435i mounted on the UR3 gripper.
+# Replace these numbers after running real hand-eye calibration.
+parent_frame: tool0
+child_frame: camera_color_optical_frame
+
+translation:
+  x: 0.07
+  y: 0.00
+  z: 0.07
+
+# Quaternion order is x, y, z, w.
+rotation_xyzw:
+  x: 0.0
+  y: 0.0
+  z: 0.0
+  w: 1.0

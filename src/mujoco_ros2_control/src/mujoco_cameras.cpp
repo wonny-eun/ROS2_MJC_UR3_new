@@ -22,18 +22,27 @@
 
 #include "sensor_msgs/image_encodings.hpp"
 
+#include <algorithm>
+#include <cmath>
+#include <random>
+
 using namespace std::chrono_literals;
 
 namespace mujoco_ros2_simulation
 {
 
 MujocoCameras::MujocoCameras(rclcpp::Node::SharedPtr& node, std::recursive_mutex* sim_mutex, mjData* mujoco_data,
-                             mjModel* mujoco_model, double camera_publish_rate)
+                             mjModel* mujoco_model, double camera_publish_rate, double rgb_noise_sigma,
+                             double depth_noise_sigma_m, double depth_quant_step_m, double depth_dropout_prob)
   : node_(node)
   , sim_mutex_(sim_mutex)
   , mj_data_(mujoco_data)
   , mj_model_(mujoco_model)
   , camera_publish_rate_(camera_publish_rate)
+  , rgb_noise_sigma_(std::max(0.0, rgb_noise_sigma))
+  , depth_noise_sigma_m_(std::max(0.0, depth_noise_sigma_m))
+  , depth_quant_step_m_(std::max(0.0, depth_quant_step_m))
+  , depth_dropout_prob_(std::clamp(depth_dropout_prob, 0.0, 1.0))
 {
 }
 
@@ -198,6 +207,11 @@ void MujocoCameras::update_loop()
 
 void MujocoCameras::update()
 {
+  thread_local std::mt19937 rng{ std::random_device{}() };
+  std::normal_distribution<double> rgb_noise_dist(0.0, rgb_noise_sigma_);
+  std::normal_distribution<double> depth_noise_dist(0.0, depth_noise_sigma_m_);
+  std::uniform_real_distribution<double> unit_dist(0.0, 1.0);
+
   // Rendering is done offscreen
   mjr_setBuffer(mjFB_OFFSCREEN, &mjr_con_);
 
@@ -235,8 +249,24 @@ void MujocoCameras::update()
       {
         auto idx = h * camera.width + w;
         auto idx_flipped = (camera.height - 1 - h) * camera.width + w;
-        camera.depth_buffer[idx] = near / (1.0f - camera.depth_buffer[idx] * (depth_scale));
-        camera.depth_buffer_flipped[idx_flipped] = camera.depth_buffer[idx];
+        float depth_m = near / (1.0f - camera.depth_buffer[idx] * (depth_scale));
+        if (depth_m > 0.0f && std::isfinite(depth_m))
+        {
+          if (depth_noise_sigma_m_ > 0.0)
+          {
+            depth_m = static_cast<float>(std::max(0.0, static_cast<double>(depth_m) + depth_noise_dist(rng)));
+          }
+          if (depth_quant_step_m_ > 0.0)
+          {
+            depth_m = static_cast<float>(std::round(static_cast<double>(depth_m) / depth_quant_step_m_) *
+                                         depth_quant_step_m_);
+          }
+          if (depth_dropout_prob_ > 0.0 && unit_dist(rng) < depth_dropout_prob_)
+          {
+            depth_m = 0.0f;
+          }
+        }
+        camera.depth_buffer_flipped[idx_flipped] = depth_m;
       }
     }
     // Copy flipped data into the depth image message, floats -> unsigned chars
@@ -249,6 +279,14 @@ void MujocoCameras::update()
       auto src_idx = h * row_size;
       auto dest_idx = (camera.height - 1 - h) * row_size;
       std::memcpy(&camera.image.data[dest_idx], &camera.image_buffer[src_idx], row_size);
+    }
+    if (rgb_noise_sigma_ > 0.0)
+    {
+      for (auto& pixel : camera.image.data)
+      {
+        const double noisy = static_cast<double>(pixel) + rgb_noise_dist(rng);
+        pixel = static_cast<uint8_t>(std::clamp(noisy, 0.0, 255.0));
+      }
     }
   }
 
