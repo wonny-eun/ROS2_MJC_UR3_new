@@ -18,9 +18,9 @@ except ImportError:  # pragma: no cover - reported at runtime in the node.
 
 
 OBJECT_MAP: Dict[str, Tuple[str, str]] = {
-    "Cylinder_1": ("Cylindrical_Object", "Cylindrical_Tip"),
-    "Cylinder_2": ("Cylindrical_Object", "Cylindrical_Tip"),
-    "Box_1": ("Box_Object", "Box_Tip"),
+    "Cylinder_1": ("Cylinder_Module1", "Cylinder_1_Module2"),
+    "Cylinder_2": ("Cylinder_Module1", "Cylinder_2_Module2"),
+    "Box_1": ("Box_Module1", "Box_1_Module2"),
 }
 
 

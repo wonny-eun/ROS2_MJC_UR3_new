@@ -1,0 +1,310 @@
+motion:
+  planning_group: ur_manipulator
+  base_frame: base_link
+  tcp_file: /home/wonny/ur3_control/src/ROS2_MuJoCo_UR3/src/ur3_rl_bridge/config/tcp/gripper_tip.yaml
+  ik_link_name: tool0
+  move_group_action: /move_action
+  sequence_action: /sequence_move_group
+  cartesian_path_service: /compute_cartesian_path
+  trajectory_action: /joint_trajectory_controller/follow_joint_trajectory
+  avoid_collisions: true
+  # moveit = safer collision-aware route planning, linear = direct straight Cartesian path.
+  default_cartesian_mode: moveit
+  default_planning_time_sec: 3.0
+  default_planning_attempts: 5
+  default_joint_state_timeout_sec: 5.0
+  default_joint_tolerance_rad: 0.01
+  default_max_step_m: 0.005
+  default_jump_threshold: 0.0
+  default_min_fraction: 0.95
+
+object_sequences:
+  Cylinder_1: [Cylinder_Module1, Cylinder_1_Module2]
+  Cylinder_2: [Cylinder_Module1, Cylinder_2_Module2]
+  Box_1: [Box_Module1, Box_1_Module2]
+
+sequences:
+  Cylinder_Module1:
+    - name: Home
+      type: joint
+      target: [-1.1087415474606372, -2.486418483252553, 0.8887611840430981, -0.5784636843911983, -1.636715068954524, -3.141592]
+      velocity_scaling: 0.2
+      acceleration_scaling: 0.2
+      delay_after_sec: 2.0
+
+    - name: Stage_1_Approach
+      type: waypoint
+      blending_radius: 0.02
+      velocity_scaling: 0.1
+      acceleration_scaling: 0.1
+      waypoints:
+        # Joint waypoint: fastest/stablest for known safe robot postures.
+        - name: Stage_1_Module_1_Approach
+          type: joint
+          target: [-1.570796326794896, -1.570796326794896, 1.570796326794896, -1.570796326794896, -1.570796326794896, -3.141592]
+
+        # Cartesian waypoint: TCP target solved through MoveIt IK.
+        - name: Stage_1_Module_1_Target
+          type: cartesian
+          target_xyz: [0.05, -0.30, 0.2]
+          lookat_vector: [0.0, 0.0, -1.0]
+          tcp_roll_rad: 1.570796326794896
+          
+    - name: Stage_1_Module_1_Lower
+      type: cartesian
+      cartesian_mode: linear
+      target_xyz: [0.05, -0.30, 0.10]
+      lookat_vector: [0.0, 0.0, -1.0]
+      tcp_roll_rad: 1.570796326794896
+      max_step_m: 0.005
+      min_fraction: 0.95
+      velocity_scaling: 0.1
+      acceleration_scaling: 0.1
+      delay_after_sec: 0.5
+          
+    - name: Stage_1_Module_1_Upper
+      type: cartesian
+      cartesian_mode: linear
+      target_xyz: [0.05, -0.30, 0.20]
+      lookat_vector: [0.0, 0.0, -1.0]
+      tcp_roll_rad: 1.570796326794896
+      max_step_m: 0.005
+      min_fraction: 0.95
+      velocity_scaling: 0.1
+      acceleration_scaling: 0.1
+      delay_after_sec: 0.5
+          
+    - name: Stage_1_Module_2_Target
+      type: cartesian
+      cartesian_mode: moveit
+      target_xyz: [0.05, -0.45, 0.20]
+      lookat_vector: [0.0, 0.0, -1.0]
+      tcp_roll_rad: 1.570796326794896
+      velocity_scaling: 0.15
+      acceleration_scaling: 0.15
+      delay_after_sec: 0.2
+
+
+  Cylinder_1_Module2:
+
+    - name: Stage_1_Module_2_Lower
+      type: cartesian
+      cartesian_mode: linear
+      target_xyz: [0.05, -0.45, 0.10]
+      lookat_vector: [0.0, 0.0, -1.0]
+      tcp_roll_rad: 1.570796326794896
+      max_step_m: 0.005
+      min_fraction: 0.95
+      velocity_scaling: 0.1
+      acceleration_scaling: 0.1
+      delay_after_sec: 0.5
+      
+    - name: Stage_1_Module_2_Upper
+      type: cartesian
+      cartesian_mode: linear
+      target_xyz: [0.05, -0.45, 0.20]
+      lookat_vector: [0.0, 0.0, -1.0]
+      tcp_roll_rad: 1.570796326794896
+      max_step_m: 0.005
+      min_fraction: 0.95
+      velocity_scaling: 0.1
+      acceleration_scaling: 0.1
+      delay_after_sec: 0.5
+      
+    - name: Home
+      type: joint
+      target: [-1.1087415474606372, -2.486418483252553, 0.8887611840430981, -0.5784636843911983, -1.636715068954524, -3.141592]
+      velocity_scaling: 0.2
+      acceleration_scaling: 0.2
+      delay_after_sec: 2.0
+
+  Cylinder_2_Module2:
+    
+    
+
+  Box_Module1:
+    - name: Home
+      type: joint
+      target: [-1.1087415474606372, -2.486418483252553, 0.8887611840430981, -0.5784636843911983, -1.636715068954524, -3.141592]
+      velocity_scaling: 0.2
+      acceleration_scaling: 0.2
+      delay_after_sec: 2.0
+
+    - name: box_ready_and_scan
+      type: waypoint
+      blending_radius: 0.02
+      velocity_scaling: 0.1
+      acceleration_scaling: 0.1
+      waypoints:
+        - name: home_ready
+          type: joint
+          target: [-1.570796326794896, -1.570796326794896, 1.570796326794896, -1.570796326794896, -1.570796326794896, -1.570796326794896]
+
+        - name: scan_box_tcp
+          type: cartesian
+          target_xyz: [0.20, -0.30, 0.18]
+          lookat_vector: [0.0, 0.0, -1.0]
+          tcp_roll_rad: 0.0
+
+  Box_1_Module2:
+    - name: box_approach_tcp
+      type: cartesian
+      cartesian_mode: moveit
+      target_xyz: [0.20, -0.30, 0.13]
+      lookat_vector: [0.0, 0.0, -1.0]
+      tcp_roll_rad: 0.0
+      velocity_scaling: 0.1
+      acceleration_scaling: 0.1
+      delay_after_sec: 0.5
+
+  
+  scan_and_approach:
+    - name: home_ready
+      type: joint
+      target: [0.0, -1.57, 1.57, -1.57, -1.57, 0.0]
+      velocity_scaling: 0.2
+      acceleration_scaling: 0.2
+      delay_after_sec: 1.0
+
+    - name: approach_tcp
+      type: cartesian
+      cartesian_mode: moveit
+      target_xyz: [0.30, -0.30, 0.10]
+      lookat_vector: [0.0, 0.0, -1.0]
+      tcp_roll_rad: 1.5708
+      velocity_scaling: 0.15
+      acceleration_scaling: 0.15
+      delay_after_sec: 0.5
+
+    # Direct straight TCP path. Use only in clear space; this bypasses full OMPL route planning.
+    - name: linear_demo
+      type: cartesian
+      cartesian_mode: linear
+      target_xyz: [0.30, -0.25, 0.10]
+      lookat_vector: [0.0, 0.0, -1.0]
+      tcp_roll_rad: 1.5708
+      max_step_m: 0.005
+      min_fraction: 0.95
+      velocity_scaling: 0.05
+      acceleration_scaling: 0.05
+      delay_after_sec: 0.5
+
+    - name: smooth_scan_path
+      type: waypoint
+      waypoints:
+        - target_xyz: [0.30, -0.30, 0.10]
+          lookat_vector: [0.0, 0.0, -1.0]
+          tcp_roll_rad: 1.5708
+        - target_xyz: [0.30, -0.25, 0.10]
+          lookat_vector: [0.0, 0.0, -1.0]
+          tcp_roll_rad: 1.5708
+        - target_xyz: [0.30, -0.35, 0.10]
+          lookat_vector: [0.0, 0.0, -1.0]
+          tcp_roll_rad: 1.5708
+      blending_radius: 0.02
+      velocity_scaling: 0.1
+      acceleration_scaling: 0.1
+
+  mixed_waypoint_demo:
+    - name: mixed_joint_and_tcp_path
+      type: waypoint
+      blending_radius: 0.02
+      velocity_scaling: 0.1
+      acceleration_scaling: 0.1
+      waypoints:
+        # Joint waypoint: fastest/stablest for known safe robot postures.
+        - name: home_ready
+          type: joint
+          target: [0.0, -1.57, 1.57, -1.57, -1.57, 0.0]
+
+        # Cartesian waypoint: TCP target solved through MoveIt IK.
+        - name: scan_tcp
+          type: cartesian
+          target_xyz: [0.30, -0.30, 0.20]
+          lookat_vector: [0.0, 0.0, -1.0]
+          tcp_roll_rad: 0.0
+
+        - name: approach_tcp
+          type: cartesian
+          target_xyz: [0.30, -0.25, 0.15]
+          lookat_vector: [0.0, 0.0, -1.0]
+          tcp_roll_rad: 0.0
+          
+    - name: Stage_approach
+      type: joint
+      target: [-1.570796326794896, -1.570796326794896, 1.570796326794896, -1.570796326794896, -1.570796326794896, -1.570796326794896]
+      velocity_scaling: 0.2
+      acceleration_scaling: 0.2
+      delay_after_sec: 0.0
+
+    - name: approach_tcp1
+      type: cartesian
+      cartesian_mode: moveit
+      target_xyz: [0.20, -0.30, 0.15]
+      lookat_vector: [0.0, 0.0, -1.0]
+      tcp_roll_rad: 0.0
+      velocity_scaling: 0.15
+      acceleration_scaling: 0.15
+      delay_after_sec: 0.2
+    
+    - name: approach_tcp2
+      type: cartesian
+      cartesian_mode: moveit
+      target_xyz: [0.20, -0.30, 0.10]
+      lookat_vector: [0.0, 0.0, -1.0]
+      tcp_roll_rad: 0.0
+      velocity_scaling: 0.1
+      acceleration_scaling: 0.15
+      delay_after_sec: 0.2
+      
+    - name: approach_tcp3
+      type: cartesian
+      cartesian_mode: moveit
+      target_xyz: [0.20, -0.30, 0.15]
+      lookat_vector: [0.0, 0.0, -1.0]
+      tcp_roll_rad: 0.0
+      velocity_scaling: 0.15
+      acceleration_scaling: 0.15
+      delay_after_sec: 0.5
+      
+      
+      
+      
+      
+      
+    - name: Stage_approach
+      type: joint
+      target: [-1.570796326794896, -1.570796326794896, 1.570796326794896, -1.570796326794896, -1.570796326794896, -1.570796326794896]
+      velocity_scaling: 0.2
+      acceleration_scaling: 0.2
+      delay_after_sec: 0.0
+
+    - name: approach_tcp1
+      type: cartesian
+      cartesian_mode: moveit
+      target_xyz: [0.20, -0.30, 0.15]
+      lookat_vector: [0.0, 0.0, -1.0]
+      tcp_roll_rad: 0.0
+      velocity_scaling: 0.15
+      acceleration_scaling: 0.15
+      delay_after_sec: 0.2
+    
+    - name: approach_tcp2
+      type: cartesian
+      cartesian_mode: moveit
+      target_xyz: [0.20, -0.30, 0.10]
+      lookat_vector: [0.0, 0.0, -1.0]
+      tcp_roll_rad: 0.0
+      velocity_scaling: 0.1
+      acceleration_scaling: 0.15
+      delay_after_sec: 0.2
+      
+    - name: approach_tcp3
+      type: cartesian
+      cartesian_mode: moveit
+      target_xyz: [0.20, -0.30, 0.15]
+      lookat_vector: [0.0, 0.0, -1.0]
+      tcp_roll_rad: 0.0
+      velocity_scaling: 0.15
+      acceleration_scaling: 0.15
+      delay_after_sec: 0.5

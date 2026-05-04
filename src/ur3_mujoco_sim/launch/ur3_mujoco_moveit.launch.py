@@ -122,6 +122,7 @@ def generate_launch_description():
     enable_mujoco_rl_camera_preview = LaunchConfiguration("enable_mujoco_rl_camera_preview")
     enable_camera_noise = LaunchConfiguration("enable_camera_noise")
     enable_yolo_object_preview = LaunchConfiguration("enable_yolo_object_preview")
+    enable_rviz = LaunchConfiguration("enable_rviz")
     enable_handeye_tf = LaunchConfiguration("enable_handeye_tf")
     handeye_file = LaunchConfiguration("handeye_file")
     yolo_model_path = LaunchConfiguration("yolo_model_path")
@@ -299,6 +300,7 @@ def generate_launch_description():
         package="rviz2",
         executable="rviz2",
         output="screen",
+        condition=IfCondition(enable_rviz),
         arguments=["-d", rviz_config],
         parameters=[
             robot_description,
@@ -316,6 +318,7 @@ def generate_launch_description():
         output="screen",
         condition=IfCondition(enable_virtual_perception),
         parameters=[
+            {"use_sim_time": use_sim_time},
             {"publish_rate_hz": 30.0},
             {"camera_frame": "camera_color_optical_frame"},
             {"object_frame": "target_object"},
@@ -328,6 +331,7 @@ def generate_launch_description():
         output="screen",
         condition=IfCondition(enable_object_manager),
         parameters=[
+            {"use_sim_time": use_sim_time},
             {"target_pose_topic": "/target_pose"},
             {"object_frame": "target_object"},
             {"reset_pose_bounds_xyz": [0.20, 0.45, -0.20, 0.20, 0.05, 0.35]},
@@ -340,6 +344,7 @@ def generate_launch_description():
         output="screen",
         condition=IfCondition(enable_camera_noise),
         parameters=[
+            {"use_sim_time": use_sim_time},
             {"rgb_in_topic": "/rl_camera/color"},
             {"depth_in_topic": "/rl_camera/depth"},
             {"rgb_out_topic": camera_rgb_topic},
@@ -371,6 +376,7 @@ def generate_launch_description():
         output="screen",
         condition=IfCondition(enable_mujoco_rl_camera_preview),
         parameters=[
+            {"use_sim_time": use_sim_time},
             {"rgb_topic": camera_rgb_topic},
             {"depth_topic": camera_depth_topic},
             {"show_rgb": False},
@@ -385,6 +391,7 @@ def generate_launch_description():
         output="screen",
         condition=IfCondition(enable_yolo_object_preview),
         parameters=[
+            {"use_sim_time": use_sim_time},
             {"rgb_topic": camera_rgb_topic},
             {"model_path": yolo_model_path},
             {"target_class": yolo_target_class},
@@ -403,6 +410,7 @@ def generate_launch_description():
         output="screen",
         condition=IfCondition(enable_handeye_tf),
         parameters=[
+            {"use_sim_time": use_sim_time},
             {"calibration_file": handeye_file},
         ],
     )
@@ -432,6 +440,11 @@ def generate_launch_description():
                 "enable_yolo_object_preview",
                 default_value="true",
                 description="If true, run YOLO on noisy color camera and open an annotated OpenCV window.",
+            ),
+            DeclareLaunchArgument(
+                "enable_rviz",
+                default_value="true",
+                description="If true, open RViz with the MoveIt robot view.",
             ),
             DeclareLaunchArgument(
                 "enable_handeye_tf",

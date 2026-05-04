@@ -53,7 +53,15 @@
     <mesh name="link1_3_1" file="link1_3_1.stl" scale="0.001 0.001 0.001"/>
     <mesh name="link2_5_1" file="link2_5_1.stl" scale="0.001 0.001 0.001"/>
     <mesh name="link2_8_1" file="link2_8_1.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="gripper_test" file="gripper_test.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="Case_Base" file="gripper/Case_Base.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="Case_Latch" file="gripper/Case_Latch.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="Shaft" file="gripper/Shaft.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="Module_1_Finger_1" file="gripper/Module_1_Finger_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="Module_1_Finger_2" file="gripper/Module_1_Finger_2.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="Module_1_Link_1" file="gripper/Module_1_Link_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="Module_1_Link_2" file="gripper/Module_1_Link_2.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="Module_1_Plate" file="gripper/Module_1_Plate.stl" scale="0.001 0.001 0.001"/>
+    
     
     <material name="silver" rgba="0.82 0.82 0.82 1"/>
     <material name="black" rgba="0.033 0.033 0.033 1"/>
@@ -131,9 +139,11 @@
                 <inertial pos="0 0 0" quat="0.5 0.5 -0.5 0.5" mass="0.35" diaginertia="0.000984375 0.000912187 0.000912187"/>
                 <joint name="wrist_3_joint" pos="0 0 0" axis="1 0 0"/>
                 <geom pos="-0.160799 0.45665 -0.068499" type="mesh" mesh="link6_2_1" material="silver"/>
-                <body name="gripper_link" pos="0.0320 0 0">
-                  <inertial pos="0 0 0" quat="0.5 0.5 -0.5 0.5" mass="0.35" diaginertia="0.000984375 0.000912187 0.000912187"/>
-                  <geom pos="0 0 0" type="mesh" mesh="gripper_test" material="silver" quat="0.5 0.5 0.5 0.5"/>
+                <body name="Case_Base" pos="0.0320 0 0">
+                  <inertial pos="-0.001678 0 0.03298" quat="0.999 0 0.040 0" mass="0.049" diaginertia="0.001124 0.001153 0.001498"/>
+                  <geom pos="0 0 0" type="mesh" mesh="Case_Base" material="silver" quat="0 0.707 0 -0.707"/>
+                  <geom pos="0 0 0" type="mesh" mesh="Case_Latch" material="silver" quat="0 0.707 0 -0.707"/>
+                  <geom pos="0 0 0" type="mesh" mesh="Shaft" material="silver" quat="0 0.707 0 -0.707"/>
                   <body name="d435i" childclass="d435i" pos="0.05 0.0325 0.07" euler="0 1.57 1.57">
       		    <geom mesh="d435i_0" material="IR_Lens" class="visual" />
       		    <geom mesh="d435i_1" material="IR_Emitter_Lens" class="visual"/>
