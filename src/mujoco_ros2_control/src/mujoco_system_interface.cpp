@@ -26,6 +26,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cmath>
+#include <functional>
 #include <future>
 #include <iostream>
 #include <memory>
@@ -39,7 +41,11 @@
 #include <hardware_interface/types/hardware_interface_type_values.hpp>
 #include <pluginlib/class_list_macros.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <Eigen/Geometry>
+
 #include <geometry_msgs/msg/transform_stamped.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
+#include <std_srvs/srv/trigger.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 #include "lodepng.h"
 
@@ -226,6 +232,7 @@ std::string getExecutableDir()
   // don't scan through the entire file system's root
   return "";
 }
+
 
 // scan for libraries in the plugin directory to load additional plugins
 void scanPluginLibraries()
@@ -539,7 +546,10 @@ hardware_interface::CallbackReturn MujocoSystemInterface::on_init(const hardware
   // Match rclcpp::ClockQoS so /clock is compatible with use_sim_time subscribers (joint_states stamps).
   clock_publisher_ =
       mujoco_node_->create_publisher<rosgraph_msgs::msg::Clock>("/clock", rclcpp::ClockQoS());
-  // Object pose mirroring to RViz has been disabled by request.
+
+  tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*mujoco_node_);
+
+  register_module_plate_weld_interfaces();
 
   // Ready cameras
   RCLCPP_INFO(rclcpp::get_logger("MujocoSystemInterface"), "Initializing cameras...");
@@ -1451,6 +1461,7 @@ void MujocoSystemInterface::PhysicsLoop()
 
     // Publish the clock
     publish_clock();
+    publish_object_transforms();
   }
 }
 
@@ -1466,14 +1477,352 @@ void MujocoSystemInterface::publish_clock()
   clock_publisher_->publish(sim_time_msg);
 }
 
-void MujocoSystemInterface::publish_object_transforms()
+void MujocoSystemInterface::publish_object_markers()
 {
   return;
 }
 
-void MujocoSystemInterface::publish_object_markers()
+namespace
 {
-  return;
+Eigen::Matrix3d mjBodyRotWorld(const mjData* d, const int body_id)
+{
+  const mjtNum* x = d->xmat + 9 * body_id;
+  Eigen::Matrix3d R;
+  R << x[0], x[1], x[2], x[3], x[4], x[5], x[6], x[7], x[8];
+  return R;
+}
+
+Eigen::Vector3d mjBodyPosWorld(const mjData* d, const int body_id)
+{
+  return Eigen::Vector3d(d->xpos[3 * body_id], d->xpos[3 * body_id + 1], d->xpos[3 * body_id + 2]);
+}
+
+void writeWeldEqData(mjtNum* slot, const Eigen::Vector3d& t_plate_frame, const Eigen::Quaterniond& q_wxyz)
+{
+  const Eigen::Quaterniond qn = q_wxyz.normalized();
+  slot[0] = 0.0;
+  slot[1] = 0.0;
+  slot[2] = 0.0;
+  slot[3] = t_plate_frame.x();
+  slot[4] = t_plate_frame.y();
+  slot[5] = t_plate_frame.z();
+  slot[6] = qn.w();
+  slot[7] = qn.x();
+  slot[8] = qn.y();
+  slot[9] = qn.z();
+  slot[10] = 1.0;
+}
+
+/** World pose of body frame as a 4x4 transform (columns of R are body axes in world). */
+Eigen::Matrix4d mjBodyPoseWorld(const mjData* d, const int body_id)
+{
+  Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
+  T.block<3, 3>(0, 0) = mjBodyRotWorld(d, body_id);
+  T.block<3, 1>(0, 3) = mjBodyPosWorld(d, body_id);
+  return T;
+}
+}  // namespace
+
+void MujocoSystemInterface::publish_object_transforms()
+{
+  if (!tf_broadcaster_ || !mujoco_node_ || !mj_model_ || !mj_data_ || sim_mutex_ == nullptr)
+  {
+    return;
+  }
+
+  const int bid_case = mj_name2id(mj_model_, mjOBJ_BODY, "Case_Base");
+  const int bid_base = mj_name2id(mj_model_, mjOBJ_BODY, "ur3_base");
+  if (bid_case < 0 || bid_base < 0)
+  {
+    return;
+  }
+
+  double sim_time = 0.0;
+  Eigen::Matrix4d T_w_b;
+  Eigen::Matrix4d T_w_c;
+
+  {
+    const std::lock_guard<std::recursive_mutex> lock(*sim_mutex_);
+    sim_time = mj_data_->time;
+    T_w_b = mjBodyPoseWorld(mj_data_, bid_base);
+    T_w_c = mjBodyPoseWorld(mj_data_, bid_case);
+  }
+
+  const Eigen::Matrix4d T_b_c = T_w_b.inverse() * T_w_c;
+  const Eigen::Matrix3d R = T_b_c.block<3, 3>(0, 0);
+  const Eigen::Quaterniond q(R);
+
+  geometry_msgs::msg::TransformStamped t;
+  int32_t sim_time_sec = static_cast<int32_t>(std::floor(sim_time));
+  uint32_t sim_time_nanosec = static_cast<uint32_t>((sim_time - static_cast<double>(sim_time_sec)) * 1e9);
+  t.header.stamp = rclcpp::Time(sim_time_sec, sim_time_nanosec, RCL_ROS_TIME);
+  // Matches robot_state_publisher root (world -> base_link with same MuJoCo alignment in ur3_mujoco_fixed.urdf.xacro).
+  t.header.frame_id = "base_link";
+  t.child_frame_id = "Case_Base";
+
+  t.transform.translation.x = T_b_c(0, 3);
+  t.transform.translation.y = T_b_c(1, 3);
+  t.transform.translation.z = T_b_c(2, 3);
+  t.transform.rotation.x = q.x();
+  t.transform.rotation.y = q.y();
+  t.transform.rotation.z = q.z();
+  t.transform.rotation.w = q.w();
+
+  tf_broadcaster_->sendTransform(t);
+}
+
+void MujocoSystemInterface::register_module_plate_weld_interfaces()
+{
+  auto logger = rclcpp::get_logger("MujocoSystemInterface");
+  if (!mujoco_node_ || !mj_model_)
+  {
+    RCLCPP_WARN(logger,
+                "Skipping Module_1_Plate weld ROS interfaces (mujoco_node or mj_model not ready).");
+    return;
+  }
+  module_plate_weld_world_eq_ = mj_name2id(mj_model_, mjOBJ_EQUALITY, "module_1_plate_world");
+  module_plate_weld_case_eq_ = mj_name2id(mj_model_, mjOBJ_EQUALITY, "module_1_plate_case_base");
+  if (module_plate_weld_world_eq_ < 0 || module_plate_weld_case_eq_ < 0)
+  {
+    RCLCPP_WARN(logger,
+                "Module_1_Plate weld equalities not found in MJCF (expected names "
+                "'module_1_plate_world', 'module_1_plate_case_base'); weld services disabled.");
+    return;
+  }
+
+  module_plate_weld_registered_ = true;
+  module_plate_weld_pose_sub_ = mujoco_node_->create_subscription<geometry_msgs::msg::PoseStamped>(
+      "/mujoco/weld/module_1_plate_case_offset", rclcpp::QoS(10),
+      std::bind(&MujocoSystemInterface::on_module_plate_weld_pose, this, std::placeholders::_1));
+
+  module_plate_attach_case_srv_ = mujoco_node_->create_service<std_srvs::srv::Trigger>(
+      "/mujoco/weld/module_1_plate_attach_case_base",
+      std::bind(&MujocoSystemInterface::attach_module1_plate_to_case_base_srv, this, std::placeholders::_1,
+                std::placeholders::_2));
+
+  module_plate_reset_table_srv_ = mujoco_node_->create_service<std_srvs::srv::Trigger>(
+      "/mujoco/weld/module_1_plate_reset_table_hold",
+      std::bind(&MujocoSystemInterface::reset_module1_plate_table_hold_srv, this, std::placeholders::_1,
+                std::placeholders::_2));
+
+  RCLCPP_INFO(logger,
+              "Module_1_Plate: subscribe /mujoco/weld/module_1_plate_case_offset; services "
+              "/mujoco/weld/module_1_plate_reset_table_hold (snap to table), "
+              "/mujoco/weld/module_1_plate_attach_case_base (snap to gripper). "
+              "Use same ROS_DOMAIN_ID in all terminals.");
+}
+
+void MujocoSystemInterface::on_module_plate_weld_pose(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
+{
+  if (!msg)
+  {
+    return;
+  }
+  std::lock_guard<std::mutex> lock(module_plate_weld_cmd_mu_);
+  module_plate_weld_pose_cmd_ = *msg;
+  module_plate_weld_have_cmd_ = true;
+}
+
+void MujocoSystemInterface::attach_module1_plate_to_case_base_srv(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> /*request*/,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+{
+  if (!response)
+  {
+    return;
+  }
+  if (!module_plate_weld_registered_ || !mj_model_ || !mj_data_ || sim_mutex_ == nullptr)
+  {
+    response->success = false;
+    response->message = "MuJoCo model or weld registration is not ready.";
+    return;
+  }
+
+  geometry_msgs::msg::PoseStamped pose_snap;
+  bool have_cmd = false;
+  {
+    std::lock_guard<std::mutex> lock(module_plate_weld_cmd_mu_);
+    have_cmd = module_plate_weld_have_cmd_;
+    pose_snap = module_plate_weld_pose_cmd_;
+  }
+
+  const std::unique_lock<std::recursive_mutex> sim_lock(*sim_mutex_);
+
+  const int bid_p = mj_name2id(mj_model_, mjOBJ_BODY, "Module_1_Plate");
+  const int bid_c = mj_name2id(mj_model_, mjOBJ_BODY, "Case_Base");
+  if (bid_p < 0 || bid_c < 0)
+  {
+    response->success = false;
+    response->message = "Bodies Module_1_Plate or Case_Base not found in model.";
+    return;
+  }
+
+  if (!have_cmd)
+  {
+    response->success = false;
+    response->message = "No weld pose received yet; publish once to /mujoco/weld/module_1_plate_case_offset "
+                        "before calling the attach service.";
+    return;
+  }
+
+  const std::string frame = pose_snap.header.frame_id;
+  const bool frame_ok = frame.empty() || (frame == "Case_Base");
+
+  const auto& pos = pose_snap.pose.position;
+  const auto& ori = pose_snap.pose.orientation;
+
+  Eigen::Vector3d weld_t;
+  Eigen::Quaterniond qweld;
+
+  auto logger = rclcpp::get_logger("MujocoSystemInterface");
+
+  const int jnt_free = mj_name2id(mj_model_, mjOBJ_JOINT, "module_1_plate_free");
+
+  if (frame_ok)
+  {
+    Eigen::Quaterniond q_cmd(ori.w, ori.x, ori.y, ori.z);
+    if (!std::isfinite(q_cmd.squaredNorm()) || q_cmd.squaredNorm() < 1e-12)
+    {
+      response->success = false;
+      response->message = "Invalid orientation quaternion in weld pose command.";
+      return;
+    }
+    q_cmd.normalize();
+    const Eigen::Vector3d p_cmd(pos.x, pos.y, pos.z);
+    const Eigen::Matrix3d R_rel = q_cmd.toRotationMatrix();
+    weld_t = -R_rel.transpose() * p_cmd;
+    qweld = Eigen::Quaterniond(R_rel);
+
+    // Release world weld, then snap plate root pose so Case_Base->Plate matches the command *before*
+    // enabling the case weld. Otherwise the equality pulls the gripper toward the old table-fixed plate
+    // pose and joint_states diverge from MoveIt.
+    mj_data_->eq_active[module_plate_weld_world_eq_] = 0;
+
+    Eigen::Matrix4d T_world_case = mjBodyPoseWorld(mj_data_, bid_c);
+    Eigen::Matrix4d T_case_plate = Eigen::Matrix4d::Identity();
+    T_case_plate.block<3, 3>(0, 0) = R_rel;
+    T_case_plate.block<3, 1>(0, 3) = p_cmd;
+    const Eigen::Matrix4d T_world_plate = T_world_case * T_case_plate;
+
+    if (jnt_free >= 0 && mj_model_->jnt_type[jnt_free] == mjJNT_FREE)
+    {
+      const int adr = mj_model_->jnt_qposadr[jnt_free];
+      const Eigen::Matrix3d Rw = T_world_plate.block<3, 3>(0, 0);
+      Eigen::Quaterniond qw(Rw);
+      qw.normalize();
+      const Eigen::Vector3d tw = T_world_plate.block<3, 1>(0, 3);
+      mj_data_->qpos[adr + 0] = tw.x();
+      mj_data_->qpos[adr + 1] = tw.y();
+      mj_data_->qpos[adr + 2] = tw.z();
+      mj_data_->qpos[adr + 3] = qw.w();
+      mj_data_->qpos[adr + 4] = qw.x();
+      mj_data_->qpos[adr + 5] = qw.y();
+      mj_data_->qpos[adr + 6] = qw.z();
+      const int vadr = mj_model_->jnt_dofadr[jnt_free];
+      for (int k = 0; k < 6; ++k)
+      {
+        mj_data_->qvel[vadr + k] = 0.0;
+      }
+    }
+
+    mj_forward(mj_model_, mj_data_);
+    RCLCPP_INFO(logger,
+                "Module_1 plate kinematic snap: Case_Base->Plate offset applied in MuJoCo before weld "
+                "(arm joints unchanged).");
+  }
+  else
+  {
+    // Legacy: measure relative pose while the plate is still world-welded (stable geometry).
+    const Eigen::Matrix3d Rplate = mjBodyRotWorld(mj_data_, bid_p);
+    const Eigen::Matrix3d Rcase = mjBodyRotWorld(mj_data_, bid_c);
+    const Eigen::Vector3d pplate = mjBodyPosWorld(mj_data_, bid_p);
+    const Eigen::Vector3d pcase = mjBodyPosWorld(mj_data_, bid_c);
+    const Eigen::Matrix3d R_rel = Rcase.transpose() * Rplate;
+    weld_t = Rplate.transpose() * (pcase - pplate);
+    qweld = Eigen::Quaterniond(R_rel);
+    RCLCPP_WARN(logger,
+                "Weld pose frame_id is not 'Case_Base'; using instantaneous relative pose (legacy path). "
+                "Prefer frame_id=Case_Base with an explicit offset.");
+
+    mj_data_->eq_active[module_plate_weld_world_eq_] = 0;
+  }
+
+  mjtNum* eq_slot = mj_model_->eq_data + module_plate_weld_case_eq_ * mjNEQDATA;
+  writeWeldEqData(eq_slot, weld_t, qweld);
+
+  mj_data_->eq_active[module_plate_weld_case_eq_] = 1;
+
+  if (jnt_free >= 0 && mj_model_->jnt_type[jnt_free] == mjJNT_FREE)
+  {
+    const int vadr = mj_model_->jnt_dofadr[jnt_free];
+    for (int k = 0; k < 6; ++k)
+    {
+      mj_data_->qvel[vadr + k] = 0.0;
+    }
+  }
+
+  mj_forward(mj_model_, mj_data_);
+
+  response->success = true;
+  if (!frame_ok)
+  {
+    response->message =
+        "Module_1_Plate welded (legacy path): frame_id was not Case_Base; plate not snapped from command.";
+  }
+  else
+  {
+    response->message =
+        "Module_1_Plate kinematically aligned to Case_Base using commanded Case_Base-frame offset; "
+        "case weld enabled without pulling the arm.";
+  }
+}
+
+void MujocoSystemInterface::reset_module1_plate_table_hold_srv(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> /*request*/,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+{
+  if (!response)
+  {
+    return;
+  }
+  if (!module_plate_weld_registered_ || !mj_model_ || !mj_data_ || sim_mutex_ == nullptr)
+  {
+    response->success = false;
+    response->message = "MuJoCo model or weld registration is not ready.";
+    return;
+  }
+
+  const std::unique_lock<std::recursive_mutex> sim_lock(*sim_mutex_);
+
+  const int jnt_free = mj_name2id(mj_model_, mjOBJ_JOINT, "module_1_plate_free");
+  if (jnt_free < 0 || mj_model_->jnt_type[jnt_free] != mjJNT_FREE)
+  {
+    response->success = false;
+    response->message = "Joint module_1_plate_free not found or not a free joint.";
+    return;
+  }
+
+  const int adr = mj_model_->jnt_qposadr[jnt_free];
+  for (int k = 0; k < 7; ++k)
+  {
+    mj_data_->qpos[adr + k] = mj_model_->qpos0[adr + k];
+  }
+
+  const int vadr = mj_model_->jnt_dofadr[jnt_free];
+  for (int k = 0; k < 6; ++k)
+  {
+    mj_data_->qvel[vadr + k] = 0.0;
+  }
+
+  mj_data_->eq_active[module_plate_weld_case_eq_] = 0;
+  mj_data_->eq_active[module_plate_weld_world_eq_] = 1;
+
+  mj_forward(mj_model_, mj_data_);
+
+  response->success = true;
+  response->message =
+      "Module_1_Plate reset to compiled default pose (MJCF/qpos0), zero velocity; world weld enabled, "
+      "gripper weld disabled. Call before pick if startup drift bothers you.";
 }
 
 void MujocoSystemInterface::get_model(mjModel*& dest)

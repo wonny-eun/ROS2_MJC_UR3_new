@@ -61,6 +61,8 @@
     <!-- D435i / rl_camera TF tree vs adjacent UR links (visual mesh overlap; keep camera vs environment enabled). -->
     <!-- gripper/camera STL meshes overlap multiple wrist links → broad disables (matches tool0+wrist_* Never pattern above). -->
     <disable_collisions link1="${prefix}tool0" link2="gripper_link" reason="Adjacent" />
+    <disable_collisions link1="${prefix}tool0" link2="gripper_tip" reason="Adjacent" />
+    <disable_collisions link1="gripper_link" link2="gripper_tip" reason="Adjacent" />
     <disable_collisions link1="${prefix}flange" link2="gripper_link" reason="Adjacent" />
     <disable_collisions link1="${prefix}wrist_3_link" link2="gripper_link" reason="Adjacent" />
     <disable_collisions link1="${prefix}wrist_2_link" link2="gripper_link" reason="Never" />

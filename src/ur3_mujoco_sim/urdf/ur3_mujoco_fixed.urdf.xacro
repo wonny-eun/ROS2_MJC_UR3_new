@@ -28,6 +28,47 @@
   <xacro:arg name="camera_depth_dropout_prob" default="0.0"/>
   <xacro:arg name="lidar_publish_rate" default="5.0"/>
 
+  <!-- Visual-only RGB axis marker (no collision). -->
+  <xacro:macro name="axis_marker_link" params="name parent xyz:='0 0 0' rpy:='0 0 0' length:='0.05' radius:='0.0025'">
+    <link name="${name}">
+      <!-- +X axis (red) -->
+      <visual>
+        <origin xyz="${length*0.5} 0 0" rpy="0 1.5707963267948966 0"/>
+        <geometry>
+          <cylinder length="${length}" radius="${radius}"/>
+        </geometry>
+        <material name="${name}_x_red">
+          <color rgba="1 0 0 1"/>
+        </material>
+      </visual>
+      <!-- +Y axis (green) -->
+      <visual>
+        <origin xyz="0 ${length*0.5} 0" rpy="-1.5707963267948966 0 0"/>
+        <geometry>
+          <cylinder length="${length}" radius="${radius}"/>
+        </geometry>
+        <material name="${name}_y_green">
+          <color rgba="0 1 0 1"/>
+        </material>
+      </visual>
+      <!-- +Z axis (blue) -->
+      <visual>
+        <origin xyz="0 0 ${length*0.5}" rpy="0 0 0"/>
+        <geometry>
+          <cylinder length="${length}" radius="${radius}"/>
+        </geometry>
+        <material name="${name}_z_blue">
+          <color rgba="0 0 1 1"/>
+        </material>
+      </visual>
+    </link>
+    <joint name="${name}_joint" type="fixed">
+      <parent link="${parent}"/>
+      <child link="${name}"/>
+      <origin xyz="${xyz}" rpy="${rpy}"/>
+    </joint>
+  </xacro:macro>
+
   <!-- Official UR model macros -->
   <xacro:include filename="$(find ur_description)/urdf/ur_macro.xacro"/>
 
@@ -45,6 +86,7 @@
     visual_parameters_file="$(arg visual_params)"
     generate_ros2_control_tag="false"
     >
+    <!-- Align URDF world frame with MuJoCo world frame (no extra yaw offset). -->
     <origin xyz="0 0 0.78" rpy="0 0 -1.5707963267948966" />
   </xacro:ur_robot>
 
@@ -54,6 +96,11 @@
     Mesh visual uses MJCF geom quat 0.5 0.5 0.5 0.5 → rpy 1.5708 0 1.5708 (fixed XYZ).
   -->
   <link name="gripper_link">
+  <inertial>
+      <origin xyz="0 0 0.05" rpy="0 0 0"/> 
+      <mass value="0.5"/> 
+      <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+  </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
@@ -71,6 +118,17 @@
     <parent link="$(arg tf_prefix)tool0"/>
     <child link="gripper_link"/>
     <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <!--
+    TCP used by ur3_pick_task / MoveIt IK (must match ur3_rl_bridge/config/tcp/gripper_tip.yaml).
+    Visual-only: empty link + axis marker for RViz; same offset as YAML tool0 -> gripper_tip.
+  -->
+  <link name="gripper_tip"/>
+  <joint name="tool0_to_gripper_tip" type="fixed">
+    <parent link="$(arg tf_prefix)tool0"/>
+    <child link="gripper_tip"/>
+    <origin xyz="0 0 0.14" rpy="0 0 0"/>
   </joint>
   <link name="d435i_mount_link"/>
   <!-- Parent must be gripper_link so the chain matches MJCF (d435i is nested under gripper_link, not parallel to it). -->
@@ -104,6 +162,17 @@
     <child link="camera_color_optical_frame"/>
     <origin xyz="0 0 0" rpy="0 0 0"/>
   </joint>
+
+  <!-- Axis markers on major UR frames (visual-only, no collisions). -->
+  <xacro:axis_marker_link name="$(arg tf_prefix)axis_base_link" parent="$(arg tf_prefix)base_link" length="0.06" radius="0.0025"/>
+  <xacro:axis_marker_link name="$(arg tf_prefix)axis_shoulder_link" parent="$(arg tf_prefix)shoulder_link" length="0.05" radius="0.0022"/>
+  <xacro:axis_marker_link name="$(arg tf_prefix)axis_upper_arm_link" parent="$(arg tf_prefix)upper_arm_link" length="0.05" radius="0.0022"/>
+  <xacro:axis_marker_link name="$(arg tf_prefix)axis_forearm_link" parent="$(arg tf_prefix)forearm_link" length="0.05" radius="0.0022"/>
+  <xacro:axis_marker_link name="$(arg tf_prefix)axis_wrist_1_link" parent="$(arg tf_prefix)wrist_1_link" length="0.04" radius="0.002"/>
+  <xacro:axis_marker_link name="$(arg tf_prefix)axis_wrist_2_link" parent="$(arg tf_prefix)wrist_2_link" length="0.04" radius="0.002"/>
+  <xacro:axis_marker_link name="$(arg tf_prefix)axis_wrist_3_link" parent="$(arg tf_prefix)wrist_3_link" length="0.04" radius="0.002"/>
+  <xacro:axis_marker_link name="$(arg tf_prefix)axis_tool0" parent="$(arg tf_prefix)tool0" length="0.04" radius="0.002"/>
+  <xacro:axis_marker_link name="$(arg tf_prefix)axis_gripper_tip" parent="gripper_tip" length="0.07" radius="0.0025"/>
 
   <!--
     Scene props for RViz visualization.

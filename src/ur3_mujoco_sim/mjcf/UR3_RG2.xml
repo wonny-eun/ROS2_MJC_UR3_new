@@ -2,7 +2,7 @@
   <compiler angle="radian" meshdir="../meshes"/>
 
   <!-- Keep the simulation lightweight: disable mesh-mesh collisions by default. -->
-  <option integrator="implicitfast" timestep="0.002"/>
+  <option integrator="implicitfast" timestep="0.002" gravity="0 0 -9.81"/>
   
   <visual>
     <global azimuth="90" elevation="-90"/>
@@ -26,33 +26,37 @@
   </default>
 
   <asset>
-    <mesh name="base_link" file="base_link.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="link1_1_1" file="link1_1_1.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="link1_2_1" file="link1_2_1.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="link2_1_1" file="link2_1_1.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="link2_2_1" file="link2_2_1.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="link2_3_1" file="link2_3_1.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="link2_4_1" file="link2_4_1.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="link2_6_1" file="link2_6_1.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="link2_7_1" file="link2_7_1.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="link3_1_1" file="link3_1_1.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="link3_2_1" file="link3_2_1.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="link3_3_1" file="link3_3_1.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="link3_4_1" file="link3_4_1.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="link3_5_1" file="link3_5_1.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="link3_7_1" file="link3_7_1.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="link3_6_1" file="link3_6_1.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="link4_1_1" file="link4_1_1.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="link4_3_1" file="link4_3_1.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="link4_2_1" file="link4_2_1.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="link5_1_1" file="link5_1_1.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="link5_3_1" file="link5_3_1.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="link5_2_1" file="link5_2_1.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="link6_1_1" file="link6_1_1.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="link6_2_1" file="link6_2_1.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="link1_3_1" file="link1_3_1.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="link2_5_1" file="link2_5_1.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="link2_8_1" file="link2_8_1.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="Base_1" file="UR3/Base_1.stl" scale="1 1 1"/>
+    <mesh name="Base_2" file="UR3/Base_2.stl" scale="1 1 1"/>
+    <mesh name="Shoulderarm_1" file="UR3/Shoulderarm_1.stl" scale="1 1 1"/>
+    <mesh name="Shoulderarm_2" file="UR3/Shoulderarm_2.stl" scale="1 1 1"/>
+    <mesh name="Shoulderarm_3" file="UR3/Shoulderarm_3.stl" scale="1 1 1"/>
+    <mesh name="Upperarm_1" file="UR3/Upperarm_1.stl" scale="1 1 1"/>
+    <mesh name="Upperarm_2" file="UR3/Upperarm_2.stl" scale="1 1 1"/>
+    <mesh name="Upperarm_3" file="UR3/Upperarm_3.stl" scale="1 1 1"/>
+    <mesh name="Upperarm_4" file="UR3/Upperarm_4.stl" scale="1 1 1"/>
+    <mesh name="Upperarm_5" file="UR3/Upperarm_5.stl" scale="1 1 1"/>
+    <mesh name="Upperarm_6" file="UR3/Upperarm_6.stl" scale="1 1 1"/>
+    <mesh name="Upperarm_7" file="UR3/Upperarm_7.stl" scale="1 1 1"/>
+    <mesh name="Upperarm_8" file="UR3/Upperarm_8.stl" scale="1 1 1"/>
+    <mesh name="Forearm_1" file="UR3/Forearm_1.stl" scale="1 1 1"/>
+    <mesh name="Forearm_2" file="UR3/Forearm_2.stl" scale="1 1 1"/>
+    <mesh name="Forearm_3" file="UR3/Forearm_3.stl" scale="1 1 1"/>
+    <mesh name="Forearm_4" file="UR3/Forearm_4.stl" scale="1 1 1"/>
+    <mesh name="Forearm_5" file="UR3/Forearm_5.stl" scale="1 1 1"/>
+    <mesh name="Forearm_6" file="UR3/Forearm_6.stl" scale="1 1 1"/>
+    <mesh name="Wrist1_1" file="UR3/Wrist1_1.stl" scale="1 1 1"/>
+    <mesh name="Wrist1_2" file="UR3/Wrist1_2.stl" scale="1 1 1"/>
+    <mesh name="Wrist1_3" file="UR3/Wrist1_3.stl" scale="1 1 1"/>
+    <mesh name="Wrist2_1" file="UR3/Wrist2_1.stl" scale="1 1 1"/>
+    <mesh name="Wrist2_2" file="UR3/Wrist2_2.stl" scale="1 1 1"/>
+    <mesh name="Wrist2_3" file="UR3/Wrist2_3.stl" scale="1 1 1"/>
+    <mesh name="Wrist3_1" file="UR3/Wrist3_1.stl" scale="1 1 1"/>
+    <mesh name="Wrist3_2" file="UR3/Wrist3_2.stl" scale="1 1 1"/>
+    
+    
+    
+
     <mesh name="Case_Base" file="gripper/Case_Base.stl" scale="0.001 0.001 0.001"/>
     <mesh name="Case_Latch" file="gripper/Case_Latch.stl" scale="0.001 0.001 0.001"/>
     <mesh name="Shaft" file="gripper/Shaft.stl" scale="0.001 0.001 0.001"/>
@@ -61,7 +65,11 @@
     <mesh name="Module_1_Link_1" file="gripper/Module_1_Link_1.stl" scale="0.001 0.001 0.001"/>
     <mesh name="Module_1_Link_2" file="gripper/Module_1_Link_2.stl" scale="0.001 0.001 0.001"/>
     <mesh name="Module_1_Plate" file="gripper/Module_1_Plate.stl" scale="0.001 0.001 0.001"/>
-    
+    <mesh name="Module_1_Shaft_Insert" file="gripper/Module_1_Shaft_Insert.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="L_Finger" file="/home/wonny/ur3_control/src/ROS2_MuJoCo_UR3/src/ur3_mujoco_sim/meshes/gripper/L_Finger.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="R_Finger" file="/home/wonny/ur3_control/src/ROS2_MuJoCo_UR3/src/ur3_mujoco_sim/meshes/gripper/R_Finger.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="L_Slider" file="/home/wonny/ur3_control/src/ROS2_MuJoCo_UR3/src/ur3_mujoco_sim/meshes/gripper/L_Slider.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="R_Slider" file="/home/wonny/ur3_control/src/ROS2_MuJoCo_UR3/src/ur3_mujoco_sim/meshes/gripper/R_Slider.stl" scale="0.001 0.001 0.001"/>
     
     <material name="silver" rgba="0.82 0.82 0.82 1"/>
     <material name="black" rgba="0.033 0.033 0.033 1"/>
@@ -78,6 +86,7 @@
     <mesh file="d435i_6.obj" scale="0.1 0.1 0.1"/>
     <mesh file="d435i_7.obj" scale="0.1 0.1 0.1"/>
     <mesh file="d435i_8.obj" scale="0.1 0.1 0.1"/>
+    
     <material class="d435i" name="Black_Acrylic" rgba="0.070360 0.070360 0.070360 1"/>
     <material class="d435i" name="Cameras_Gray" rgba="0.296138 0.296138 0.296138 1"/>
     <material class="d435i" name="IR_Emitter_Lens" rgba="0.287440 0.665387 0.327778 1"/>
@@ -93,92 +102,138 @@
   <worldbody>
     <light pos="0 0 1.5" dir="0 0 -1" directional="true"/>
     <!-- Wrap base geoms in a parent body so they're part of the robot tree. -->
-    <body name="ur3_base" pos="0 0 0.78">
-      <geom type="mesh" mesh="base_link" pos="0 0 0" material="silver"/>
-      <geom type="mesh" mesh="link1_1_1" pos="0 0 0" material="black"/>
-      <body name="link1_3_1" pos="0 0 0.0964">
-      <inertial pos="0 0 0" mass="2" diaginertia="0.00809316 0.00809316 0.005625"/>
-      <joint name="shoulder_pan_joint" pos="0 0 0" axis="0 0 1"/>
-      <geom pos="0 0 -0.0964" quat="1 0 0 0" type="mesh" mesh="link1_3_1" material="gray"/>
-      <geom pos="0 0 -0.0964" quat="1 0 0 0" type="mesh" mesh="link1_2_1" material="sky"/>
-      <geom pos="0 0 -0.0964" type="mesh" mesh="link2_1_1" material="black"/>
-      <body name="link2_2_1" pos="0.06435 0 0.055499" >
-        <inertial pos="0 0 0.121825" mass="3.42" diaginertia="0.0217285 0.0217285 0.00961875"/>
-        <joint name="shoulder_lift_joint" pos="0 0 0" axis="1 0 0"/>
-        <geom pos="-0.06435 0 -0.151899" quat="1 0 0 0" type="mesh" mesh="link2_2_1" material="gray"/>
-        <geom pos="-0.06435 0 -0.151899" type="mesh" mesh="link2_3_1" material="sky"/>
-        <geom pos="-0.06435 0 -0.151899" quat="1 0 0 0" type="mesh" mesh="link2_4_1" material="black"/>
-        <geom pos="-0.06435 0 -0.151899" quat="1 0 0 0" type="mesh" mesh="link2_5_1" material="silver"/>
-        <geom pos="-0.06435 0 -0.151899" quat="1 0 0 0" type="mesh" mesh="link2_6_1" material="black"/>
-        <geom pos="-0.06435 0 -0.151899" quat="1 0 0 0" type="mesh" mesh="link2_8_1" material="gray"/>
-        <geom pos="-0.06435 0 -0.151899" quat="1 0 0 0" type="mesh" mesh="link2_7_1" material="sky"/>
-        <geom pos="-0.06435 0 -0.151899" type="mesh" mesh="link3_1_1" material="black"/>
-        <body name="link3_2_1" pos="0.005149 -0.24365 0">
-          <inertial pos="0 0 0.106625" mass="1.26" diaginertia="0.00654681 0.00654681 0.00354375"/>
-          <joint name="elbow_joint" pos="0 0 0" axis="1 0 0"/>
-          <geom pos="-0.069499 0.24365 -0.151899" quat="1 0 0 0" type="mesh" mesh="link3_2_1" material="gray"/>
-          <geom pos="-0.069499 0.24365 -0.151899" quat="1 0 0 0" type="mesh" mesh="link3_3_1" material="black"/>
-          <geom pos="-0.069499 0.24365 -0.151899" quat="1 0 0 0" type="mesh" mesh="link3_4_1" material="silver"/>
-          <geom pos="-0.069499 0.24365 -0.151899" quat="1 0 0 0" type="mesh" mesh="link3_5_1" material="black"/>
-          <geom pos="-0.069499 0.24365 -0.151899" quat="1 0 0 0" type="mesh" mesh="link3_7_1" material="gray"/>
-          <geom pos="-0.069499 0.24365 -0.151899" type="mesh" mesh="link3_6_1" material="sky"/>
-          <geom pos="-0.069499 0.24365 -0.151899" type="mesh" mesh="link4_1_1" material="black"/>
-          <body name="link4_3_1" pos="0.0059 -0.213 0">
-            <inertial pos="0 0 0" quat="0.5 0.5 -0.5 0.5" mass="0.8" diaginertia="0.00225 0.002085 0.002085"/>
-            <joint name="wrist_1_joint" pos="0 0 0" axis="1 0 0"/>
-            <geom pos="-0.075399 0.45665 -0.151899" quat="1 0 0 0" type="mesh" mesh="link4_3_1" material="gray"/>
-            <geom pos="-0.075399 0.45665 -0.151899" quat="1 0 0 0" type="mesh" mesh="link4_2_1" material="sky"/>
-            <geom pos="-0.075399 0.45665 -0.151899" quat="1 0 0 0" type="mesh" mesh="link5_1_1" material="black"/>
-            <body name="link5_3_1" pos="0.035 0 -0.0484">
-              <inertial pos="0 0 0" quat="0.5 0.5 -0.5 0.5" mass="0.8" diaginertia="0.00225 0.002085 0.002085"/>
-              <joint name="wrist_2_joint" pos="0 0 0" axis="0 0 -1"/>
-              <geom pos="-0.110399 0.45665 -0.103499" quat="1 0 0 0" type="mesh" mesh="link5_3_1" material="gray"/>
-              <geom pos="-0.110399 0.45665 -0.103499" quat="1 0 0 0" type="mesh" mesh="link5_2_1" material="sky"/>
-              <geom pos="-0.110399 0.45665 -0.103499" type="mesh" mesh="link6_1_1" material="black"/>
-              <body name="link6_2_1" pos="0.0504 0 -0.035">
-                <inertial pos="0 0 0" quat="0.5 0.5 -0.5 0.5" mass="0.35" diaginertia="0.000984375 0.000912187 0.000912187"/>
-                <joint name="wrist_3_joint" pos="0 0 0" axis="1 0 0"/>
-                <geom pos="-0.160799 0.45665 -0.068499" type="mesh" mesh="link6_2_1" material="silver"/>
-                <body name="Case_Base" pos="0.0320 0 0">
-                  <inertial pos="-0.001678 0 0.03298" quat="0.999 0 0.040 0" mass="0.049" diaginertia="0.001124 0.001153 0.001498"/>
-                  <geom pos="0 0 0" type="mesh" mesh="Case_Base" material="silver" quat="0 0.707 0 -0.707"/>
-                  <geom pos="0 0 0" type="mesh" mesh="Case_Latch" material="silver" quat="0 0.707 0 -0.707"/>
-                  <geom pos="0 0 0" type="mesh" mesh="Shaft" material="silver" quat="0 0.707 0 -0.707"/>
-                  <body name="d435i" childclass="d435i" pos="0.05 0.0325 0.07" euler="0 1.57 1.57">
-      		    <geom mesh="d435i_0" material="IR_Lens" class="visual" />
-      		    <geom mesh="d435i_1" material="IR_Emitter_Lens" class="visual"/>
-      		    <geom mesh="d435i_2" material="IR_Rim" class="visual"/>
-                    <geom mesh="d435i_3" material="IR_Lens" class="visual"/>
-      		    <geom mesh="d435i_4" material="Cameras_Gray" class="visual"/>
-      		    <geom mesh="d435i_5" material="Black_Acrylic" class="visual"/>
-      		    <geom mesh="d435i_6" material="Black_Acrylic" class="visual"/>
-      		    <geom mesh="d435i_7" material="RGB_Pupil" class="visual"/>
-      		    <geom mesh="d435i_8" mass="0.072" material="Metal_Casing" class="visual"/>
-      		    <!-- No physics contacts: avoids spurious sim forces vs table/objects; MoveIt uses URDF collision instead. -->
-      		    <geom class="collision" mesh="d435i_8" contype="0" conaffinity="0"/>
-      		    <!-- MuJoCo default camera resolution is 1x1 if omitted; ROS image would be unusable. -->
-		    <camera name="rl_camera" pos="0 0 0" euler="0 -3.14 0" fovy="42.5" resolution="640 480"/>
-    		  </body>
-		</body>
-                
-                  
-              
+    <body name="base_link" pos="0 0 0.78">
+      <inertial pos="0 0 0" mass="2" diaginertia="0.008093166666666665 0.008093166666666665 0.005625"/>
+      <geom type="mesh" mesh="Base_1" pos="0 0 0" quat="-0.7071067811 0 0 0.7071067811" material="silver"/>
+      <geom type="mesh" mesh="Base_2" pos="0 0 0" quat="-0.7071067811 0 0 0.7071067811" material="black"/>
+      <body name="link1" pos="0 0 0.1519" quat="0.7071067811 0 0 0.7071067811">
+        <inertial pos="0 0 -0.02" mass="2" diaginertia="0.008093166666666665 0.008093166666666665 0.005625"/>
+        <joint name="shoulder_pan_joint" pos="0 0 0" axis="0 0 1"/>
+        <geom quat="0 0 0 1" type="mesh" mesh="Shoulderarm_1" material="gray"/>
+        <geom quat="0 0 0 1" type="mesh" mesh="Shoulderarm_2" material="silver"/>
+        <geom quat="0 0 0 1" type="mesh" mesh="Shoulderarm_3" material="sky"/>
+        <body name="link2" quat="0.7071067811 0.7071067811 0 0">
+          <inertial pos="-0.11365 0 0.1157" mass="3.42" diaginertia="0.021728491912499998 0.021728491912499998 0.00961875"/>
+          <joint name="shoulder_lift_joint" pos="0 0 0" axis="0 0 1"/>
+          <geom pos="0 0 0.1198" quat="0.5 0.5 -0.5 -0.5" type="mesh" mesh="Upperarm_1" material="sky"/>
+          <geom pos="0 0 0.1198" quat="0.5 0.5 -0.5 -0.5" type="mesh" mesh="Upperarm_2" material="gray"/>
+          <geom pos="0 0 0.1198" quat="0.5 0.5 -0.5 -0.5" type="mesh" mesh="Upperarm_3" material="silver"/>
+          <geom pos="0 0 0.1198" quat="0.5 0.5 -0.5 -0.5" type="mesh" mesh="Upperarm_4" material="black"/>
+          <geom pos="0 0 0.1198" quat="0.5 0.5 -0.5 -0.5" type="mesh" mesh="Upperarm_5" material="black"/>
+          <geom pos="0 0 0.1198" quat="0.5 0.5 -0.5 -0.5" type="mesh" mesh="Upperarm_6" material="black"/>
+          <geom pos="0 0 0.1198" quat="0.5 0.5 -0.5 -0.5" type="mesh" mesh="Upperarm_7" material="sky"/>
+          <geom pos="0 0 0.1198" quat="0.5 0.5 -0.5 -0.5" type="mesh" mesh="Upperarm_8" material="gray"/>          
+          <body name="link3" pos="-0.24365 0 0">
+            <inertial pos="0 -0.16325 0.0238" mass="1.26" diaginertia="0.0065468090625 0.0065468090625 0.00354375"/>
+            <joint name="elbow_joint" pos="0 0 0" axis="0 0 1"/>
+            <geom pos="0 0 0.0275" quat="0.5 0.5 -0.5 -0.5" type="mesh" mesh="Forearm_1" material="gray"/>
+            <geom pos="0 0 0.0275" quat="0.5 0.5 -0.5 -0.5" type="mesh" mesh="Forearm_2" material="silver"/>
+            <geom pos="0 0 0.0275" quat="0.5 0.5 -0.5 -0.5" type="mesh" mesh="Forearm_3" material="gray"/>
+            <geom pos="0 0 0.0275" quat="0.5 0.5 -0.5 -0.5" type="mesh" mesh="Forearm_4" material="black"/>
+            <geom pos="0 0 0.0275" quat="0.5 0.5 -0.5 -0.5" type="mesh" mesh="Forearm_5" material="black"/>
+            <geom pos="0 0 0.0275" quat="0.5 0.5 -0.5 -0.5" type="mesh" mesh="Forearm_6" material="sky"/>
+            <body name="link4" pos="-0.21325 0 0.11235">
+              <inertial pos="0 -0.01 0" quat="0.5 0.5 -0.5 0.5" mass="0.8" diaginertia="0.00225 0.00161064 0.00161064"/>
+              <joint name="wrist_1_joint" pos="0 0 0" axis="0 0 1"/>
+              <geom pos="0 0 -0.085" quat="0.7071067811 0.7071067811 0 0" type="mesh" mesh="Wrist1_1" material="gray"/>
+              <geom pos="0 0 -0.085" quat="0.7071067811 0.7071067811 0 0" type="mesh" mesh="Wrist1_2" material="black"/>
+              <geom pos="0 0 -0.085" quat="0.7071067811 0.7071067811 0 0" type="mesh" mesh="Wrist1_3" material="sky"/>
+              <body name="link5" pos="0 -0.08535 -1.75056e-11" quat="0.7071067811 0.7071067811 0 0">
+                <inertial pos="0 0.01 0" quat="0.5 0.5 -0.5 0.5" mass="0.8" diaginertia="0.00225 0.00157217 0.00157217"/>
+                <joint name="wrist_2_joint" pos="0 0 0" axis="0 0 1"/>
+                <geom pos="0 0 -0.083" quat="1 0 0 0" type="mesh" mesh="Wrist2_1" material="sky"/>
+                <geom pos="0 0 -0.083" quat="1 0 0 0" type="mesh" mesh="Wrist2_2" material="black"/>
+                <geom pos="0 0 -0.083" quat="1 0 0 0" type="mesh" mesh="Wrist2_3" material="gray"/>
+                <body name="link6" pos="0 0.0819 -1.6798e-11" quat="0.7071067811 -0.7071067811 0 0">
+                  <inertial pos="0 0 -0.02" quat="0.5 0.5 -0.5 0.5" mass="0.35" diaginertia="0.0001792 0.000136267 0.000136267"/>
+                  <joint name="wrist_3_joint" pos="0 0 0" axis="0 0 1"/>
+                  <geom pos="0 -0.00255 -0.082" quat="0.7071067811 0.7071067811 0 0" type="mesh" mesh="Wrist3_1" material="silver"/>
+                  <geom pos="0 -0.00255 -0.082" quat="0.7071067811 0.7071067811 0 0" type="mesh" mesh="Wrist3_2" material="black"/>
+                  <body name="Case_Base" pos="0 0 0">
+                    <inertial pos="0 0 0.03298" quat="0.999 0 0.040 0" mass="0.049" diaginertia="0.001124 0.001153 0.001498"/>
+                    <geom pos="0 0 0" type="mesh" mesh="Case_Base" material="silver" quat="0 0.7071067811 -0.7071067811 0"/>
+                    <geom pos="0 0 0" type="mesh" mesh="Case_Latch" material="silver" quat="0 0.7071067811 -0.7071067811 0"/>
+                    <geom pos="0 0 0" type="mesh" mesh="Shaft" material="silver" quat="0 0.7071067811 -0.7071067811 0"/>
+                    <body name="d435i" childclass="d435i" pos="0.0325 0.07 0.05" euler="0 0 0">
+      		      <geom mesh="d435i_0" material="IR_Lens" class="visual" />
+      		      <geom mesh="d435i_1" material="IR_Emitter_Lens" class="visual"/>
+      		      <geom mesh="d435i_2" material="IR_Rim" class="visual"/>
+                      <geom mesh="d435i_3" material="IR_Lens" class="visual"/>
+      		      <geom mesh="d435i_4" material="Cameras_Gray" class="visual"/>
+      		      <geom mesh="d435i_5" material="Black_Acrylic" class="visual"/>
+      		      <geom mesh="d435i_6" material="Black_Acrylic" class="visual"/>
+      		      <geom mesh="d435i_7" material="RGB_Pupil" class="visual"/>
+      		      <geom mesh="d435i_8" mass="0.072" material="Metal_Casing" class="visual"/>
+      		      <!-- No physics contacts: avoids spurious sim forces vs table/objects; MoveIt uses URDF collision instead. -->
+      		      <geom class="collision" mesh="d435i_8" contype="0" conaffinity="0"/>
+      		      <!-- MuJoCo default camera resolution is 1x1 if omitted; ROS image would be unusable. -->
+		      <camera name="rl_camera" pos="0 0 0" euler="0 -3.141592 0" fovy="42.5" resolution="640 480"/>
+    		    </body>
+		  </body>   
+                </body>
               </body>
             </body>
           </body>
         </body>
       </body>
+    </body>
+
+    <body name="Module_1_Plate" pos="-0.3 -0.05 0.99">
+      <joint name="weld_free_joint" type="free"/>
+      <inertial pos="-0.001678 0 0.03298" mass="0.1" diaginertia="0.001124 0.001153 0.001498"/>
+      <geom pos="0 0 0" type="mesh" mesh="Module_1_Plate" material="silver" quat="-1 0 0 0"/>
+
+      <body name="Shaft_insert" pos="0 0 -0.086">
+        <inertial pos="0 -0.0085 0" mass="0.015" diaginertia="1.0e-6 1.0e-6 5.0e-7"/>
+        <joint name="gripper_motor_joint" type="hinge" pos="0 0 0" axis="0 0 1"/>
+        <geom pos="0 0 0.086" type="mesh" mesh="Module_1_Shaft_Insert" material="silver" quat="0 0 0 1"/>
+        
+        <body name="R_Link" pos="0 -0.017 0">
+          <inertial pos="0 -0.018 0" mass="0.008" diaginertia="9.0e-7 4.0e-8 9.0e-7"/>
+          <joint name="connecting_rod_crank_pin1_joint" type="hinge" pos="0 0 0" axis="0 0 1" damping="0.001" armature="1.0e-6"/>
+          <geom pos="0 0.017 0.086" type="mesh" mesh="Module_1_Link_1" material="silver"/>
+          <site name="rod_slider_pin1_site" pos="0 -0.036 0" size="0.003" rgba="1 0.5 0 1"/>
+        </body>
+        
+        <body name="L_Link" pos="0 0.017 0">
+          <inertial pos="0 0.018 0" mass="0.008" diaginertia="9.0e-7 4.0e-8 9.0e-7"/>
+          <joint name="connecting_rod_crank_pin2_joint" type="hinge" pos="0 0 0" axis="0 0 1" damping="0.001" armature="1.0e-6"/>
+          <geom pos="0 -0.017 0.086" type="mesh" mesh="Module_1_Link_2" material="silver"/>
+          <site name="rod_slider_pin2_site" pos="0 0.036 0" size="0.003" rgba="1 0.5 0 1"/>
+        </body>
       </body>
+      
+      <body name="R_Slider" pos="0 -0.053 -0.086">
+        <inertial pos="0 0 0" mass="0.04" diaginertia="1.45e-6 1.10e-6 2.30e-6"/>
+        <joint name="R_Slider_joint" type="slide" pos="0 0 0" range="0 0.02" axis="0 1 0" damping="0.08" armature="1.0e-5"/>
+        <geom pos="0 0.053 0.086" type="mesh" mesh="R_Slider" material="black"/>             
+        <geom pos="0 0.053 0.086" type="mesh" mesh="R_Finger" material="silver"/>
+        <site name="slider_pin1_site" pos="0 0 0" size="0.003" rgba="0 0.7 1 1"/>
+      </body>
+      
+      <body name="L_Slider" pos="0 0.053 -0.086">
+        <inertial pos="0 0 0" mass="0.04" diaginertia="1.45e-6 1.10e-6 2.30e-6"/>
+        <joint name="L_Slider_joint" type="slide" pos="0 0 0" range="0 0.02" axis="0 1 0" damping="0.08" armature="1.0e-5"/>
+        <geom pos="0 -0.053 0.086" type="mesh" mesh="L_Slider" material="black"/>             
+        <geom pos="0 -0.053 0.086" type="mesh" mesh="L_Finger" material="silver"/>
+        <site name="slider_pin2_site" pos="0 0 0" size="0.003" rgba="0 0.7 1 1"/>
+      </body>      
     </body>
   </worldbody>
   
+  <equality>
+    <connect name="rod_L_slider_pin_connect" site1="rod_slider_pin1_site" site2="slider_pin1_site" solref="0.002 1" solimp="0.95 0.99 0.0001"/>
+    <connect name="rod_R_slider_pin_connect" site1="rod_slider_pin2_site" site2="slider_pin2_site" solref="0.002 1" solimp="0.95 0.99 0.0001"/>
+  </equality>
+  
 
   <actuator>
-    <position name="shoulder_pan_joint_pos" joint="shoulder_pan_joint" ctrlrange="-6.28 6.28" kp="2000" kv="100" forcerange="-56 56"/>
-    <position name="shoulder_lift_joint_pos" joint="shoulder_lift_joint" ctrlrange="-6.28 6.28" kp="2000" kv="100" forcerange="-56 56"/>
-    <position name="elbow_joint_pos" joint="elbow_joint" ctrlrange="-3.14 3.14" kp="2000" kv="100" forcerange="-56 56"/>
-    <position name="wrist_1_joint_pos" joint="wrist_1_joint" ctrlrange="-6.28 6.28" kp="500" kv="30" forcerange="-12 12"/>
-    <position name="wrist_2_joint_pos" joint="wrist_2_joint" ctrlrange="-6.28 6.28" kp="500" kv="30" forcerange="-12 12"/>
-    <position name="wrist_3_joint_pos" joint="wrist_3_joint" ctrlrange="-6.28 6.28" kp="500" kv="30" forcerange="-12 12"/>
+    <position name="shoulder_pan_joint_pos" joint="shoulder_pan_joint" ctrlrange="-6.28319 6.28319" kp="2000" kv="100" forcerange="-56 56"/>
+    <position name="shoulder_lift_joint_pos" joint="shoulder_lift_joint" ctrlrange="-6.28319 6.28319" kp="2000" kv="100" forcerange="-56 56"/>
+    <position name="elbow_joint_pos" joint="elbow_joint" ctrlrange="-3.14159 3.14159" kp="2000" kv="100" forcerange="-56 56"/>
+    <position name="wrist_1_joint_pos" joint="wrist_1_joint" ctrlrange="-6.28319 6.28319" kp="500" kv="30" forcerange="-12 12"/>
+    <position name="wrist_2_joint_pos" joint="wrist_2_joint" ctrlrange="-6.28319 6.28319" kp="500" kv="30" forcerange="-12 12"/>
+    <position name="wrist_3_joint_pos" joint="wrist_3_joint" ctrlrange="-6.28319 6.28319" kp="500" kv="30" forcerange="-12 12"/>
+    <position name="gripper_motor_joint_pos" joint="gripper_motor_joint" ctrlrange="0 1.396" kp="500" kv="30" forcerange="-10 10"/>
   </actuator>
 </mujoco>

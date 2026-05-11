@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>tool0 vs Case_Base (base_link)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 1.25rem; max-width: 1100px; }
+    h1 { font-size: 1.35rem; }
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: 0.92rem; }
+    th, td { border: 1px solid #ccc; padding: 0.35rem 0.45rem; text-align: left; }
+    th { background: #f4f4f4; }
+    .num { font-variant-numeric: tabular-nums; text-align: right; }
+    .warn { background: #fff8e6; padding: 0.75rem; border-radius: 6px; margin: 1rem 0; }
+    code { background: #eee; padding: 0 0.2rem; border-radius: 3px; }
+    #status { color: #666; font-size: 0.9rem; margin-bottom: 0.75rem; }
+  </style>
+</head>
+<body>
+  <h1>URDF <code>tool0</code> vs MuJoCo <code>Case_Base</code> (both expressed in <code>base_link</code>)</h1>
+  <p id="status">Loading…</p>
+  <p>
+    Rows are recorded when <code>action_sequencer</code> publishes the completed action name
+    (<code>-p publish_action_completed_topic:=/action_compare/action_name</code>), and this node listens on the same topic
+    (<code>ros2 run … pose_compare_site --ros-args -p listen_action_topic:=/action_compare/action_name</code>).
+    <strong>Rebuild <code>mujoco_ros2_simulation</code></strong> so MuJoCo publishes TF <code>base_link → Case_Base</code>
+    from the live MJCF body pose.
+  </p>
+  <div class="warn">
+    <strong>Why positions can stay “almost” aligned but never identical</strong>
+    <ul>
+      <li><strong>MJCF vs URDF kinematics:</strong>
+        The scene wrapper states the MJCF (<code>UR3_RG2.xml</code>) uses RG2 CAD / non-official DH, while MoveIt /
+        <code>robot_state_publisher</code> use <code>ur_description</code>.
+        Joint angles are shared, but link frames differ → FK of <code>tool0</code> (URDF) and the kinematic chain to
+        <code>Case_Base</code> (MJCF bodies) systematically disagree slightly.</li>
+      <li><strong>Root alignment:</strong> URDF mounts <code>base_link</code> under <code>world</code> at
+        <code>xyz="0 0 0.78" rpy="0 0 -π/2"</code> to match the sim; residual error can come from MJCF solver drift,
+        contact, or timestep.</li>
+      <li><strong>Frame conventions:</strong> MuJoCo body frames and URDF link frames use different conventions
+        (+Z mesh offset on gripper CAD, quaternion on <code>Case_Base</code> geom, etc.).
+        Orientation misalignment often exceeds translation error.</li>
+      <li><strong>Weld equality:</strong> After <code>Weld_Module_1_To_Case_Base</code>, the plate is snapped in MJCF with
+        a commanded offset; ROS IK still targets URDF TCP, not the post-weld MJCF equilibrium.</li>
+      <li><strong>Trajectory execution / timing:</strong> Snapshots use TF at slightly different solver steps than MV.</li>
+    </ul>
+  </div>
+  <table id="tbl">
+    <thead>
+      <tr>
+        <th>After action</th>
+        <th class="num">Δx (mm)</th>
+        <th class="num">Δy (mm)</th>
+        <th class="num">Δz (mm)</th>
+        <th class="num">|Δp| (mm)</th>
+        <th class="num">Δθ (deg)</th>
+        <th>notes</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    async function load() {
+      const st = document.getElementById('status');
+      const tbody = document.querySelector('#tbl tbody');
+      tbody.innerHTML = '';
+      try {
+        const r = await fetch('/api/data', { cache: 'no-store' });
+        const j = await r.json();
+        st.textContent = j.rows?.length ? j.rows.length + ' row(s) — refreshed ' + new Date().toISOString()
+          : 'No rows yet — run the sequencer with Cylinder_1 while this page is open.';
+        for (const row of j.rows || []) {
+          const tr = document.createElement('tr');
+          const cells = [
+            row.action ?? '',
+            row.dx_mm ?? '—',
+            row.dy_mm ?? '—',
+            row.dz_mm ?? '—',
+            row.dist_mm ?? '—',
+            row.dtheta_deg ?? '—',
+            row.note ?? '',
+          ];
+          cells.forEach((c, i) => {
+            const td = document.createElement('td');
+            td.textContent = String(c);
+            if (i > 0 && i < 6) td.className = 'num';
+            tr.appendChild(td);
+          });
+          tbody.appendChild(tr);
+        }
+      } catch (e) {
+        st.textContent = 'Failed to fetch /api/data (' + e + ')';
+      }
+    }
+    setInterval(load, 1500);
+    load();
+  </script>
+</body>
+</html>

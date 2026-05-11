@@ -1,5 +1,9 @@
 <mujoco model="ur3_scene_table">
-  <!-- Robot + actuators (meshes under ../meshes relative to this file) -->
+  <!--
+    Robot kinematics: UR3_RG2.xml (RG2 CAD / non-official DH). Joint names match ROS, but link
+    frames and axes differ from ur_description / ur3_mujoco_fixed.urdf.xacro — TF from robot_state_publisher
+    will not match MuJoCo body poses one-for-one.
+  -->
   <include file="UR3_RG2.xml"/>
   <option gravity="0 0 -9.81"/>
   <!-- Camera framing for the MuJoCo viewer -->
@@ -9,6 +13,8 @@
     <headlight diffuse="0.65 0.65 0.65" ambient="0.2 0.2 0.22" specular="0.2 0.2 0.2"/>
     <rgba haze="0.12 0.18 0.28 1"/>
     <global azimuth="140" elevation="-22"/>
+    <!-- Show per-body axis frames clearly in MuJoCo viewer (visual only, no collision impact). -->
+    <scale framelength="0.08" framewidth="0.004"/>
     <quality shadowsize="4096"/>
   </visual>
 
@@ -106,4 +112,18 @@
     </body>
 
   </worldbody>
+
+  <!-- Module_1_Plate welds (names must match mujoco_ros2_simulation); bodies come from UR3_RG2.xml include -->
+  <equality>
+    <!-- Initial pose: welded to world at Module_1_Plate default body position [-0.3, -0.05, 0.99] -->
+    <!-- Stiff world hold: softer solref lets the plate creep at startup (timestep 0.002). -->
+    <weld name="module_1_plate_world" body1="Module_1_Plate" solref="0.001 1" active="true"/>
+    <!-- Runtime attachment to gripper Case_Base via /mujoco/weld/module_1_plate_attach_case_base -->
+    <weld name="module_1_plate_case_base" body1="Module_1_Plate" body2="Case_Base" solref="0.001 1" active="false"/>
+  </equality>
+
+  <contact>
+    <exclude body1="Module_1_Plate" body2="Case_Base"/>
+  </contact>
+
 </mujoco>

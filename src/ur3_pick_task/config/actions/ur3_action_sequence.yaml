@@ -13,18 +13,46 @@ motion:
   default_planning_time_sec: 3.0
   default_planning_attempts: 5
   default_joint_state_timeout_sec: 5.0
-  default_joint_tolerance_rad: 0.01
-  default_max_step_m: 0.005
-  default_jump_threshold: 0.0
+  default_joint_tolerance_rad: 0.0001
+  default_max_step_m: 0.0005
+  default_jump_threshold: 2.0
   default_min_fraction: 0.95
+
+# Vision (YOLO + camera topics). Used by type: yolo_visual_center (or yolo_visual_lookat_and_approach).
+# Camera topics are subscribed only when that action starts (no buffering from ros2 run through earlier steps).
+# Flow: (1) IK look-at toward detection until bbox centered; (2) Cartesian (+ IK) along +Z_optical to target_distance_m.
+# Optional: camera_lookat_tcp_roll_rad (often match Cartesian tcp_roll_rad for your mount), lookat_max_iterations,
+# approach_max_iterations, approach_step_max_m — see vision defaults in action_sequencer._merge_vision_config.
+vision:
+  yolo_model_path: /home/wonny/ur3_control/runs/segment/ur3_yolo_multi_seg3/weights/best.pt
+  min_confidence: 0.5
+  target_distance_m: 0.4
+  rgb_topic: /rl_camera/color
+  depth_topic: /rl_camera/depth
+  camera_info_topic: /rl_camera/camera_info
+  camera_optical_frame: rl_camera_frame
+  max_iterations: 8
+  lookat_max_iterations: 18
+  approach_max_iterations: 12
+  approach_step_max_m: 0.08
+  center_tolerance_px: 35
+  distance_tolerance_m: 0.025
+  step_gain: 0.45
+  default_target_class: ""
 
 object_sequences:
   Cylinder_1: [Cylinder_Module1, Cylinder_1_Module2]
   Cylinder_2: [Cylinder_Module1, Cylinder_2_Module2]
-  Box_1: [Box_Module1, Box_1_Module2]
+  Box_1: [Box_1_Module1, Box_1_Module2]
 
 sequences:
   Cylinder_Module1:
+    # Optional: snap Module_1_Plate to MJCF table pose before approach (fixes soft-weld creep at startup).
+    # Uncomment if the plate visibly drifts before the first grasp.
+    # - name: Plate_Reset_Table_Hold
+    #   type: trigger
+    #   service_name: /mujoco/weld/module_1_plate_reset_table_hold
+
     - name: Home
       type: joint
       target: [-1.1087415474606372, -2.486418483252553, 0.8887611840430981, -0.5784636843911983, -1.636715068954524, -3.141592]
@@ -35,7 +63,7 @@ sequences:
     - name: Stage_1_Approach
       type: waypoint
       blending_radius: 0.02
-      velocity_scaling: 0.1
+      velocity_scaling: 0.05
       acceleration_scaling: 0.1
       waypoints:
         # Joint waypoint: fastest/stablest for known safe robot postures.
@@ -53,14 +81,28 @@ sequences:
     - name: Stage_1_Module_1_Lower
       type: cartesian
       cartesian_mode: linear
-      target_xyz: [0.05, -0.30, 0.10]
+      target_xyz: [0.05, -0.30, 0.072]
       lookat_vector: [0.0, 0.0, -1.0]
       tcp_roll_rad: 1.570796326794896
-      max_step_m: 0.005
+      max_step_m: 0.0005
       min_fraction: 0.95
       velocity_scaling: 0.1
       acceleration_scaling: 0.1
       delay_after_sec: 0.5
+
+    # MuJoCo weld: simulation snaps Module_1_Plate to Case_Base using this Case_Base-frame offset,
+    # then enables the plate–Case_Base equality (see mujoco_ros2_simulation attach service).
+    # Zeros + identity = plate body origin aligned with Case_Base origin/orientation (matches MoveIt TCP pose).
+    - name: Weld_Module_1_To_Case_Base
+      type: weld
+      target_pose_topic: /mujoco/weld/module_1_plate_case_offset
+      target_frame: Case_Base
+      target_xyz: [0.0, 0.0, 0.0]
+      target_quat_xyzw: [-0.707, 0.707, 0, 0]
+      pose_settle_sec: 0.05
+      service_name: /mujoco/weld/module_1_plate_attach_case_base
+      delay_after_sec: 0.6
+
           
     - name: Stage_1_Module_1_Upper
       type: cartesian
@@ -68,7 +110,7 @@ sequences:
       target_xyz: [0.05, -0.30, 0.20]
       lookat_vector: [0.0, 0.0, -1.0]
       tcp_roll_rad: 1.570796326794896
-      max_step_m: 0.005
+      max_step_m: 0.0005
       min_fraction: 0.95
       velocity_scaling: 0.1
       acceleration_scaling: 0.1
@@ -90,7 +132,7 @@ sequences:
     - name: Stage_1_Module_2_Lower
       type: cartesian
       cartesian_mode: linear
-      target_xyz: [0.05, -0.45, 0.10]
+      target_xyz: [0.05, -0.45, 0.076]
       lookat_vector: [0.0, 0.0, -1.0]
       tcp_roll_rad: 1.570796326794896
       max_step_m: 0.005
@@ -98,7 +140,7 @@ sequences:
       velocity_scaling: 0.1
       acceleration_scaling: 0.1
       delay_after_sec: 0.5
-      
+
     - name: Stage_1_Module_2_Upper
       type: cartesian
       cartesian_mode: linear
@@ -110,19 +152,33 @@ sequences:
       velocity_scaling: 0.1
       acceleration_scaling: 0.1
       delay_after_sec: 0.5
-      
+
     - name: Home
       type: joint
       target: [-1.1087415474606372, -2.486418483252553, 0.8887611840430981, -0.5784636843911983, -1.636715068954524, -3.141592]
       velocity_scaling: 0.2
       acceleration_scaling: 0.2
       delay_after_sec: 2.0
+
+    # YOLO + depth + TF: wrist look-at to center bbox, then Cartesian approach to ~ vision.target_distance_m.
+    # Per-action Cartesian tuning also applies to the approach segment (MoveIt compute_cartesian_path).
+    - name: Module_2_Visual_Center_YOLO
+      type: yolo_visual_center
+      target_class: Cylinder_1
+      # Align with wrist look-at mounting (same order of magnitude as Cartesian tcp_roll_rad on this robot).
+      camera_lookat_tcp_roll_rad: 1.570796326794896
+      velocity_scaling: 0.12
+      acceleration_scaling: 0.12
+      max_step_m: 0.005
+      min_fraction: 0.85
+      delay_after_sec: 0.3
+
 
   Cylinder_2_Module2:
     
     
 
-  Box_Module1:
+  Box_1_Module1:
     - name: Home
       type: joint
       target: [-1.1087415474606372, -2.486418483252553, 0.8887611840430981, -0.5784636843911983, -1.636715068954524, -3.141592]
@@ -130,32 +186,118 @@ sequences:
       acceleration_scaling: 0.2
       delay_after_sec: 2.0
 
-    - name: box_ready_and_scan
+    - name: Stage_1_Approach
       type: waypoint
       blending_radius: 0.02
-      velocity_scaling: 0.1
+      velocity_scaling: 0.05
       acceleration_scaling: 0.1
       waypoints:
-        - name: home_ready
+        # Joint waypoint: fastest/stablest for known safe robot postures.
+        - name: Stage_1_Module_1_Approach
           type: joint
-          target: [-1.570796326794896, -1.570796326794896, 1.570796326794896, -1.570796326794896, -1.570796326794896, -1.570796326794896]
+          target: [-1.570796326794896, -1.570796326794896, 1.570796326794896, -1.570796326794896, -1.570796326794896, -3.141592]
 
-        - name: scan_box_tcp
+        # Cartesian waypoint: TCP target solved through MoveIt IK.
+        - name: Stage_1_Module_1_Target
           type: cartesian
-          target_xyz: [0.20, -0.30, 0.18]
+          target_xyz: [0.05, -0.30, 0.2]
           lookat_vector: [0.0, 0.0, -1.0]
-          tcp_roll_rad: 0.0
-
-  Box_1_Module2:
-    - name: box_approach_tcp
+          tcp_roll_rad: 1.570796326794896
+          
+    - name: Stage_1_Module_1_Lower
       type: cartesian
-      cartesian_mode: moveit
-      target_xyz: [0.20, -0.30, 0.13]
+      cartesian_mode: linear
+      target_xyz: [0.05, -0.30, 0.072]
       lookat_vector: [0.0, 0.0, -1.0]
-      tcp_roll_rad: 0.0
+      tcp_roll_rad: 1.570796326794896
+      max_step_m: 0.0005
+      min_fraction: 0.95
       velocity_scaling: 0.1
       acceleration_scaling: 0.1
       delay_after_sec: 0.5
+
+    # MuJoCo weld: simulation snaps Module_1_Plate to Case_Base using this Case_Base-frame offset,
+    # then enables the plate–Case_Base equality (see mujoco_ros2_simulation attach service).
+    # Zeros + identity = plate body origin aligned with Case_Base origin/orientation (matches MoveIt TCP pose).
+    - name: Weld_Module_1_To_Case_Base
+      type: weld
+      target_pose_topic: /mujoco/weld/module_1_plate_case_offset
+      target_frame: Case_Base
+      target_xyz: [0.0, 0.0, 0.0]
+      target_quat_xyzw: [0.707, 0.0, -0.707, 0.0]
+      pose_settle_sec: 0.05
+      service_name: /mujoco/weld/module_1_plate_attach_case_base
+      delay_after_sec: 0.6
+
+          
+    - name: Stage_1_Module_1_Upper
+      type: cartesian
+      cartesian_mode: linear
+      target_xyz: [0.05, -0.30, 0.20]
+      lookat_vector: [0.0, 0.0, -1.0]
+      tcp_roll_rad: 1.570796326794896
+      max_step_m: 0.0005
+      min_fraction: 0.95
+      velocity_scaling: 0.1
+      acceleration_scaling: 0.1
+      delay_after_sec: 0.5
+          
+    - name: Stage_1_Module_2_Target
+      type: cartesian
+      cartesian_mode: moveit
+      target_xyz: [0.05, -0.45, 0.20]
+      lookat_vector: [0.0, 0.0, -1.0]
+      tcp_roll_rad: 1.570796326794896
+      velocity_scaling: 0.15
+      acceleration_scaling: 0.15
+      delay_after_sec: 0.2
+
+  Box_1_Module2:
+
+    - name: Stage_1_Module_2_Lower
+      type: cartesian
+      cartesian_mode: linear
+      target_xyz: [0.05, -0.45, 0.076]
+      lookat_vector: [0.0, 0.0, -1.0]
+      tcp_roll_rad: 1.570796326794896
+      max_step_m: 0.005
+      min_fraction: 0.95
+      velocity_scaling: 0.1
+      acceleration_scaling: 0.1
+      delay_after_sec: 0.5
+
+    - name: Stage_1_Module_2_Upper
+      type: cartesian
+      cartesian_mode: linear
+      target_xyz: [0.05, -0.45, 0.20]
+      lookat_vector: [0.0, 0.0, -1.0]
+      tcp_roll_rad: 1.570796326794896
+      max_step_m: 0.005
+      min_fraction: 0.95
+      velocity_scaling: 0.1
+      acceleration_scaling: 0.1
+      delay_after_sec: 0.5
+
+    - name: Home
+      type: joint
+      target: [-1.1087415474606372, -2.486418483252553, 0.8887611840430981, -0.5784636843911983, -1.636715068954524, -3.141592]
+      velocity_scaling: 0.2
+      acceleration_scaling: 0.2
+      delay_after_sec: 2.0
+
+    # YOLO + depth + TF: wrist look-at to center bbox, then Cartesian approach to ~ vision.target_distance_m.
+    # Per-action Cartesian tuning also applies to the approach segment (MoveIt compute_cartesian_path).
+    - name: Module_2_Visual_Center_YOLO
+      type: yolo_visual_center
+      target_class: Box_1
+      # Align with wrist look-at mounting (same order of magnitude as Cartesian tcp_roll_rad on this robot).
+      camera_lookat_tcp_roll_rad: 1.570796326794896
+      velocity_scaling: 0.12
+      acceleration_scaling: 0.12
+      max_step_m: 0.005
+      min_fraction: 0.85
+      delay_after_sec: 0.3
+
 
   
   scan_and_approach:

@@ -30,6 +30,7 @@
 #include <hardware_interface/hardware_info.hpp>
 #include <hardware_interface/system_interface.hpp>
 #include <hardware_interface/types/hardware_interface_return_values.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
 #include <rclcpp/macros.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_lifecycle/node_interfaces/lifecycle_node_interface.hpp>
@@ -37,6 +38,7 @@
 #include <rosgraph_msgs/msg/clock.hpp>
 #include <tf2_ros/transform_broadcaster.h>
 #include <visualization_msgs/msg/marker_array.hpp>
+#include <std_srvs/srv/trigger.hpp>
 
 #include <mujoco/mujoco.h>
 
@@ -189,6 +191,15 @@ private:
   void publish_object_transforms();
   void publish_object_markers();
 
+  void register_module_plate_weld_interfaces();
+  void on_module_plate_weld_pose(const geometry_msgs::msg::PoseStamped::SharedPtr msg);
+  void attach_module1_plate_to_case_base_srv(
+      const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+      std::shared_ptr<std_srvs::srv::Trigger::Response> response);
+  void reset_module1_plate_table_hold_srv(
+      const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+      std::shared_ptr<std_srvs::srv::Trigger::Response> response);
+
   // System information
   hardware_interface::HardwareInfo system_info_;
   std::string model_path_;
@@ -234,6 +245,17 @@ private:
 
   // Containers for LIDAR sensors
   std::unique_ptr<MujocoLidar> lidar_sensors_;
+
+  // Optional: weld Module_1_Plate to Case_Base (MJCF equality + ROS command)
+  rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr module_plate_weld_pose_sub_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr module_plate_attach_case_srv_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr module_plate_reset_table_srv_;
+  std::mutex module_plate_weld_cmd_mu_;
+  geometry_msgs::msg::PoseStamped module_plate_weld_pose_cmd_;
+  bool module_plate_weld_have_cmd_{ false };
+  bool module_plate_weld_registered_{ false };
+  int module_plate_weld_world_eq_{ -1 };
+  int module_plate_weld_case_eq_{ -1 };
 
   // Mutex used inside simulate.h for protecting model/data, we keep a reference
   // here to protect access to shared data.

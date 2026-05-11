@@ -422,7 +422,11 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "mujoco_model",
                 default_value=default_mujoco_scene,
-                description="Absolute path to MJCF loaded by mujoco_ros2_simulation (scene or bare robot).",
+                description=(
+                    "Absolute path to MJCF for mujoco_ros2_simulation. Default is ur3_scene_table.xml "
+                    "(includes UR3_RG2.xml). MoveIt/RViz use ur3_mujoco_fixed.urdf.xacro (official UR chain); "
+                    "sim FK and TF can differ."
+                ),
             ),
             DeclareLaunchArgument("enable_virtual_perception", default_value="true"),
             DeclareLaunchArgument("enable_object_manager", default_value="true"),

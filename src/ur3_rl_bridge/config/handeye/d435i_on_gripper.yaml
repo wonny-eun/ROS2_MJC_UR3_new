@@ -4,7 +4,7 @@ parent_frame: tool0
 child_frame: camera_color_optical_frame
 
 translation:
-  x: 0.07
+  x: 0.05
   y: 0.00
   z: 0.07
 
