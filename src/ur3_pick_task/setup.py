@@ -13,6 +13,7 @@ setup(
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         (os.path.join('share', package_name, 'config', 'ik'), glob('config/ik/*.yaml')),
+        (os.path.join('share', package_name, 'config', 'servo'), glob('config/servo/*.yaml')),
         (os.path.join('share', package_name, 'web', 'pose_compare'), glob('web/pose_compare/*')),
     ],
     install_requires=['setuptools'],

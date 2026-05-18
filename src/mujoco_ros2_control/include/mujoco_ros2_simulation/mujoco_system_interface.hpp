@@ -199,6 +199,12 @@ private:
   void reset_module1_plate_table_hold_srv(
       const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
       std::shared_ptr<std_srvs::srv::Trigger::Response> response);
+  void attach_module2_tips_to_fingers_srv(
+      const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+      std::shared_ptr<std_srvs::srv::Trigger::Response> response);
+  void detach_module2_tips_to_world_srv(
+      const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+      std::shared_ptr<std_srvs::srv::Trigger::Response> response);
 
   // System information
   hardware_interface::HardwareInfo system_info_;
@@ -256,6 +262,13 @@ private:
   bool module_plate_weld_registered_{ false };
   int module_plate_weld_world_eq_{ -1 };
   int module_plate_weld_case_eq_{ -1 };
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr module2_tips_attach_fingers_srv_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr module2_tips_detach_world_srv_;
+  bool module2_tips_weld_registered_{ false };
+  int module2_l_tip_world_eq_{ -1 };
+  int module2_r_tip_world_eq_{ -1 };
+  int module2_l_tip_slider_eq_{ -1 };
+  int module2_r_tip_slider_eq_{ -1 };
 
   // Mutex used inside simulate.h for protecting model/data, we keep a reference
   // here to protect access to shared data.

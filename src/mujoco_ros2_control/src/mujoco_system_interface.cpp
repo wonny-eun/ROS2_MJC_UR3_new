@@ -1605,10 +1605,37 @@ void MujocoSystemInterface::register_module_plate_weld_interfaces()
       std::bind(&MujocoSystemInterface::reset_module1_plate_table_hold_srv, this, std::placeholders::_1,
                 std::placeholders::_2));
 
+  module2_l_tip_world_eq_ = mj_name2id(mj_model_, mjOBJ_EQUALITY, "module_2_l_tip_world");
+  module2_r_tip_world_eq_ = mj_name2id(mj_model_, mjOBJ_EQUALITY, "module_2_r_tip_world");
+  module2_l_tip_slider_eq_ = mj_name2id(mj_model_, mjOBJ_EQUALITY, "module_2_l_tip_l_slider");
+  module2_r_tip_slider_eq_ = mj_name2id(mj_model_, mjOBJ_EQUALITY, "module_2_r_tip_r_slider");
+  if (module2_l_tip_world_eq_ >= 0 && module2_r_tip_world_eq_ >= 0 && module2_l_tip_slider_eq_ >= 0 &&
+      module2_r_tip_slider_eq_ >= 0)
+  {
+    module2_tips_weld_registered_ = true;
+    module2_tips_attach_fingers_srv_ = mujoco_node_->create_service<std_srvs::srv::Trigger>(
+        "/mujoco/weld/module_2_tips_attach_fingers",
+        std::bind(&MujocoSystemInterface::attach_module2_tips_to_fingers_srv, this, std::placeholders::_1,
+                  std::placeholders::_2));
+    module2_tips_detach_world_srv_ = mujoco_node_->create_service<std_srvs::srv::Trigger>(
+        "/mujoco/weld/module_2_tips_detach_world",
+        std::bind(&MujocoSystemInterface::detach_module2_tips_to_world_srv, this, std::placeholders::_1,
+                  std::placeholders::_2));
+  }
+  else
+  {
+    RCLCPP_WARN(logger,
+                "Module_2 tip weld equalities not found in MJCF (expected names "
+                "'module_2_l_tip_world', 'module_2_r_tip_world', "
+                "'module_2_l_tip_l_slider', 'module_2_r_tip_r_slider'); tip weld service disabled.");
+  }
+
   RCLCPP_INFO(logger,
               "Module_1_Plate: subscribe /mujoco/weld/module_1_plate_case_offset; services "
               "/mujoco/weld/module_1_plate_reset_table_hold (snap to table), "
-              "/mujoco/weld/module_1_plate_attach_case_base (snap to gripper). "
+              "/mujoco/weld/module_1_plate_attach_case_base (snap to gripper), "
+              "/mujoco/weld/module_2_tips_attach_fingers, /mujoco/weld/module_2_tips_detach_world "
+              "(switch both tips if available). "
               "Use same ROS_DOMAIN_ID in all terminals.");
 }
 
@@ -1823,6 +1850,116 @@ void MujocoSystemInterface::reset_module1_plate_table_hold_srv(
   response->message =
       "Module_1_Plate reset to compiled default pose (MJCF/qpos0), zero velocity; world weld enabled, "
       "gripper weld disabled. Call before pick if startup drift bothers you.";
+}
+
+void MujocoSystemInterface::attach_module2_tips_to_fingers_srv(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> /*request*/,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+{
+  if (!response)
+  {
+    return;
+  }
+  if (!module2_tips_weld_registered_ || !mj_model_ || !mj_data_ || sim_mutex_ == nullptr)
+  {
+    response->success = false;
+    response->message = "MuJoCo model or Module_2 tip weld registration is not ready.";
+    return;
+  }
+
+  const std::unique_lock<std::recursive_mutex> sim_lock(*sim_mutex_);
+
+  mj_data_->eq_active[module2_l_tip_world_eq_] = 0;
+  mj_data_->eq_active[module2_r_tip_world_eq_] = 0;
+  mj_data_->eq_active[module2_l_tip_slider_eq_] = 1;
+  mj_data_->eq_active[module2_r_tip_slider_eq_] = 1;
+
+  const char* free_joint_names[] = { "weld_free_joint_L_Tip", "weld_free_joint_R_Tip" };
+  for (const char* joint_name : free_joint_names)
+  {
+    const int jnt_free = mj_name2id(mj_model_, mjOBJ_JOINT, joint_name);
+    if (jnt_free >= 0 && mj_model_->jnt_type[jnt_free] == mjJNT_FREE)
+    {
+      const int vadr = mj_model_->jnt_dofadr[jnt_free];
+      for (int k = 0; k < 6; ++k)
+      {
+        mj_data_->qvel[vadr + k] = 0.0;
+      }
+    }
+  }
+
+  mj_forward(mj_model_, mj_data_);
+
+  response->success = true;
+  response->message = "Module_2 L_Tip and R_Tip switched from world hold to finger slider welds.";
+}
+
+void MujocoSystemInterface::detach_module2_tips_to_world_srv(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> /*request*/,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+{
+  if (!response)
+  {
+    return;
+  }
+  if (!module2_tips_weld_registered_ || !mj_model_ || !mj_data_ || sim_mutex_ == nullptr)
+  {
+    response->success = false;
+    response->message = "MuJoCo model or Module_2 tip weld registration is not ready.";
+    return;
+  }
+
+  const std::unique_lock<std::recursive_mutex> sim_lock(*sim_mutex_);
+
+  const int l_tip_body = mj_name2id(mj_model_, mjOBJ_BODY, "L_Tip");
+  const int r_tip_body = mj_name2id(mj_model_, mjOBJ_BODY, "R_Tip");
+  if (l_tip_body < 0 || r_tip_body < 0)
+  {
+    response->success = false;
+    response->message = "Bodies L_Tip or R_Tip not found in model.";
+    return;
+  }
+
+  const std::pair<int, int> body_eq_pairs[] = {
+    { l_tip_body, module2_l_tip_world_eq_ },
+    { r_tip_body, module2_r_tip_world_eq_ },
+  };
+  for (const auto& body_eq_pair : body_eq_pairs)
+  {
+    const int body_id = body_eq_pair.first;
+    const int eq_id = body_eq_pair.second;
+    const Eigen::Matrix3d R_body = mjBodyRotWorld(mj_data_, body_id);
+    const Eigen::Vector3d p_body = mjBodyPosWorld(mj_data_, body_id);
+    const Eigen::Vector3d weld_t = R_body.transpose() * (-p_body);
+    Eigen::Quaterniond qweld(R_body);
+    qweld.normalize();
+    mjtNum* eq_slot = mj_model_->eq_data + eq_id * mjNEQDATA;
+    writeWeldEqData(eq_slot, weld_t, qweld);
+  }
+
+  mj_data_->eq_active[module2_l_tip_slider_eq_] = 0;
+  mj_data_->eq_active[module2_r_tip_slider_eq_] = 0;
+  mj_data_->eq_active[module2_l_tip_world_eq_] = 1;
+  mj_data_->eq_active[module2_r_tip_world_eq_] = 1;
+
+  const char* free_joint_names[] = { "weld_free_joint_L_Tip", "weld_free_joint_R_Tip" };
+  for (const char* joint_name : free_joint_names)
+  {
+    const int jnt_free = mj_name2id(mj_model_, mjOBJ_JOINT, joint_name);
+    if (jnt_free >= 0 && mj_model_->jnt_type[jnt_free] == mjJNT_FREE)
+    {
+      const int vadr = mj_model_->jnt_dofadr[jnt_free];
+      for (int k = 0; k < 6; ++k)
+      {
+        mj_data_->qvel[vadr + k] = 0.0;
+      }
+    }
+  }
+
+  mj_forward(mj_model_, mj_data_);
+
+  response->success = true;
+  response->message = "Module_2 L_Tip and R_Tip detached from fingers and welded to world at current pose.";
 }
 
 void MujocoSystemInterface::get_model(mjModel*& dest)

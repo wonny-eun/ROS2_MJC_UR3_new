@@ -57,10 +57,10 @@ def _write_randomized_scene_copy(base_scene_path: str):
     root = tree.getroot()
 
     # Tunables: update here if you want different spawn area.
-    x_min, x_max = -0.45, -0.15
-    y_min, y_max = -0.45, -0.15
+    x_min, x_max = -0.40, -0.25
+    y_min, y_max = -0.40, -0.25
     same_z = 0.9
-    min_dist_m = 0.07
+    min_dist_m = 0.1
 
     object_body_names = [
         "cylinder_1_obj",
@@ -261,6 +261,22 @@ def generate_launch_description():
         ],
     )
 
+    servo_yaml = load_yaml("ur3_pick_task", "config/servo/ur3_servo.yaml")
+    if not servo_yaml:
+        servo_yaml = load_yaml("ur_moveit_config", "config/ur_servo.yaml")
+    servo_node = Node(
+        package="moveit_servo",
+        executable="servo_node_main",
+        name="servo_node",
+        output="screen",
+        parameters=[
+            {"moveit_servo": servo_yaml},
+            robot_description,
+            robot_description_semantic,
+            {"use_sim_time": use_sim_time},
+        ],
+    )
+
     # ROS 2 control (MuJoCo hardware) + controllers
     controller_parameters = ParameterFile(
         PathJoinSubstitution([FindPackageShare("ur3_mujoco_sim"), "config", "ur3_controllers.yaml"]),
@@ -292,6 +308,13 @@ def generate_launch_description():
         package="controller_manager",
         executable="spawner",
         arguments=["joint_trajectory_controller", "--controller-manager", "/controller_manager"],
+        output="screen",
+    )
+
+    spawn_gripper = Node(
+        package="controller_manager",
+        executable="spawner",
+        arguments=["gripper_motor_position_controller", "--controller-manager", "/controller_manager"],
         output="screen",
     )
 
@@ -350,17 +373,17 @@ def generate_launch_description():
             {"rgb_out_topic": camera_rgb_topic},
             {"depth_out_topic": camera_depth_topic},
             {"rgb_noise_sigma": 1.0},
-            {"rgb_salt_pepper_prob": 0.0001},
-            {"rgb_brightness_jitter": 1.0},
+            {"rgb_salt_pepper_prob": 0.00001},
+            {"rgb_brightness_jitter": 0.1},
             {"rgb_contrast_jitter": 0.01},
-            {"depth_noise_sigma_m": 0.001},
-            {"depth_quant_step_m": 0.001},
-            {"depth_dropout_prob": 0.001},
-            {"depth_edge_dropout_prob": 0.005},
+            {"depth_noise_sigma_m": 0.0005},
+            {"depth_quant_step_m": 0.005},
+            {"depth_dropout_prob": 0.0001},
+            {"depth_edge_dropout_prob": 0.0001},
             {"depth_edge_threshold_m": 0.02},
             {"depth_shadow_enable": True},
             {"depth_shadow_direction": "left"},
-            {"depth_shadow_k_px_m": 3.0},
+            {"depth_shadow_k_px_m": 4.0},
             {"depth_shadow_min_radius_px": 1},
             {"depth_shadow_max_radius_px": 8},
             {"depth_shadow_edge_threshold_m": 0.015},
@@ -464,7 +487,7 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "yolo_model_path",
-                default_value="/home/wonny/ur3_control/runs/segment/ur3_yolo_multi_seg3/weights/best.pt",
+                default_value="/home/wonny/ur3_control/runs/segment/ur3_multi_sim_real_ultra/weights/best.pt",
                 description="Path to trained YOLO segmentation model (best.pt).",
             ),
             DeclareLaunchArgument(
@@ -491,7 +514,9 @@ def generate_launch_description():
             ros2_control_node,
             spawn_jsb,
             spawn_jtc,
+            spawn_gripper,
             move_group_node,
+            servo_node,
             rviz_node,
             virtual_perception_node,
             object_manager_node,

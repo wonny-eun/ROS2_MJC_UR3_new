@@ -2,7 +2,7 @@
   <compiler angle="radian" meshdir="../meshes"/>
 
   <!-- Keep the simulation lightweight: disable mesh-mesh collisions by default. -->
-  <option integrator="implicitfast" timestep="0.002" gravity="0 0 -9.81"/>
+  <option integrator="implicitfast" timestep="0.002" gravity="0 0 0"/>
   
   <visual>
     <global azimuth="90" elevation="-90"/>
@@ -60,8 +60,6 @@
     <mesh name="Case_Base" file="gripper/Case_Base.stl" scale="0.001 0.001 0.001"/>
     <mesh name="Case_Latch" file="gripper/Case_Latch.stl" scale="0.001 0.001 0.001"/>
     <mesh name="Shaft" file="gripper/Shaft.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="Module_1_Finger_1" file="gripper/Module_1_Finger_1.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="Module_1_Finger_2" file="gripper/Module_1_Finger_2.stl" scale="0.001 0.001 0.001"/>
     <mesh name="Module_1_Link_1" file="gripper/Module_1_Link_1.stl" scale="0.001 0.001 0.001"/>
     <mesh name="Module_1_Link_2" file="gripper/Module_1_Link_2.stl" scale="0.001 0.001 0.001"/>
     <mesh name="Module_1_Plate" file="gripper/Module_1_Plate.stl" scale="0.001 0.001 0.001"/>
@@ -70,6 +68,10 @@
     <mesh name="R_Finger" file="/home/wonny/ur3_control/src/ROS2_MuJoCo_UR3/src/ur3_mujoco_sim/meshes/gripper/R_Finger.stl" scale="0.001 0.001 0.001"/>
     <mesh name="L_Slider" file="/home/wonny/ur3_control/src/ROS2_MuJoCo_UR3/src/ur3_mujoco_sim/meshes/gripper/L_Slider.stl" scale="0.001 0.001 0.001"/>
     <mesh name="R_Slider" file="/home/wonny/ur3_control/src/ROS2_MuJoCo_UR3/src/ur3_mujoco_sim/meshes/gripper/R_Slider.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="R_Tip" file="/home/wonny/ur3_control/src/ROS2_MuJoCo_UR3/src/ur3_mujoco_sim/meshes/gripper/R_Tip.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="L_Tip" file="/home/wonny/ur3_control/src/ROS2_MuJoCo_UR3/src/ur3_mujoco_sim/meshes/gripper/L_Tip.stl" scale="0.001 0.001 0.001"/>
+    
+    <mesh name="Station" file="/home/wonny/ur3_control/src/ROS2_MuJoCo_UR3/src/ur3_mujoco_sim/meshes/gripper/station.stl" scale="0.001 0.001 0.001"/>
     
     <material name="silver" rgba="0.82 0.82 0.82 1"/>
     <material name="black" rgba="0.033 0.033 0.033 1"/>
@@ -149,7 +151,7 @@
                   <joint name="wrist_3_joint" pos="0 0 0" axis="0 0 1"/>
                   <geom pos="0 -0.00255 -0.082" quat="0.7071067811 0.7071067811 0 0" type="mesh" mesh="Wrist3_1" material="silver"/>
                   <geom pos="0 -0.00255 -0.082" quat="0.7071067811 0.7071067811 0 0" type="mesh" mesh="Wrist3_2" material="black"/>
-                  <body name="Case_Base" pos="0 0 0">
+                  <body name="Case_Base" pos="0 0 -0.001">
                     <inertial pos="0 0 0.03298" quat="0.999 0 0.040 0" mass="0.049" diaginertia="0.001124 0.001153 0.001498"/>
                     <geom pos="0 0 0" type="mesh" mesh="Case_Base" material="silver" quat="0 0.7071067811 -0.7071067811 0"/>
                     <geom pos="0 0 0" type="mesh" mesh="Case_Latch" material="silver" quat="0 0.7071067811 -0.7071067811 0"/>
@@ -178,47 +180,72 @@
       </body>
     </body>
 
-    <body name="Module_1_Plate" pos="-0.3 -0.05 0.99">
+    <body name="Station" pos="-0.2 -0.05 0.79" quat="0 0 0 1">
+      <geom pos="0 0 0" type="mesh" mesh="Station" material="silver"/>
+    </body>
+
+
+
+
+
+    <body name="Module_1_Plate" pos="-0.2 -0.05 0.94">
       <joint name="weld_free_joint" type="free"/>
       <inertial pos="-0.001678 0 0.03298" mass="0.1" diaginertia="0.001124 0.001153 0.001498"/>
       <geom pos="0 0 0" type="mesh" mesh="Module_1_Plate" material="silver" quat="-1 0 0 0"/>
 
-      <body name="Shaft_insert" pos="0 0 -0.086">
+      <body name="Shaft_insert" pos="0 0 -0.0905">
         <inertial pos="0 -0.0085 0" mass="0.015" diaginertia="1.0e-6 1.0e-6 5.0e-7"/>
         <joint name="gripper_motor_joint" type="hinge" pos="0 0 0" axis="0 0 1"/>
-        <geom pos="0 0 0.086" type="mesh" mesh="Module_1_Shaft_Insert" material="silver" quat="0 0 0 1"/>
+        <geom pos="0 0 0.0905" type="mesh" mesh="Module_1_Shaft_Insert" material="silver" quat="0 0 0 1"/>
         
         <body name="R_Link" pos="0 -0.017 0">
           <inertial pos="0 -0.018 0" mass="0.008" diaginertia="9.0e-7 4.0e-8 9.0e-7"/>
           <joint name="connecting_rod_crank_pin1_joint" type="hinge" pos="0 0 0" axis="0 0 1" damping="0.001" armature="1.0e-6"/>
-          <geom pos="0 0.017 0.086" type="mesh" mesh="Module_1_Link_1" material="silver"/>
-          <site name="rod_slider_pin1_site" pos="0 -0.036 0" size="0.003" rgba="1 0.5 0 1"/>
+          <geom pos="0 0.017 0.0905" type="mesh" mesh="Module_1_Link_1" material="silver"/>
+          <site name="rod_slider_pin1_site" pos="0 -0.036 0" size="0.003" rgba="1 0.5 0 0"/>
         </body>
         
         <body name="L_Link" pos="0 0.017 0">
           <inertial pos="0 0.018 0" mass="0.008" diaginertia="9.0e-7 4.0e-8 9.0e-7"/>
           <joint name="connecting_rod_crank_pin2_joint" type="hinge" pos="0 0 0" axis="0 0 1" damping="0.001" armature="1.0e-6"/>
-          <geom pos="0 -0.017 0.086" type="mesh" mesh="Module_1_Link_2" material="silver"/>
-          <site name="rod_slider_pin2_site" pos="0 0.036 0" size="0.003" rgba="1 0.5 0 1"/>
+          <geom pos="0 -0.017 0.0905" type="mesh" mesh="Module_1_Link_2" material="silver"/>
+          <site name="rod_slider_pin2_site" pos="0 0.036 0" size="0.003" rgba="1 0.5 0 0"/>
         </body>
       </body>
       
-      <body name="R_Slider" pos="0 -0.053 -0.086">
+      <body name="R_Slider" pos="0 -0.053 -0.0905">
         <inertial pos="0 0 0" mass="0.04" diaginertia="1.45e-6 1.10e-6 2.30e-6"/>
         <joint name="R_Slider_joint" type="slide" pos="0 0 0" range="0 0.02" axis="0 1 0" damping="0.08" armature="1.0e-5"/>
-        <geom pos="0 0.053 0.086" type="mesh" mesh="R_Slider" material="black"/>             
-        <geom pos="0 0.053 0.086" type="mesh" mesh="R_Finger" material="silver"/>
-        <site name="slider_pin1_site" pos="0 0 0" size="0.003" rgba="0 0.7 1 1"/>
+        <geom pos="0 0.053 0.0905" type="mesh" mesh="R_Slider" material="black"/>             
+        <geom pos="0 0.053 0.0905" type="mesh" mesh="R_Finger" material="silver"/>
+        <site name="slider_pin1_site" pos="0 0 0" size="0.003" rgba="0 0.7 1 0"/>
       </body>
       
-      <body name="L_Slider" pos="0 0.053 -0.086">
+      <body name="L_Slider" pos="0 0.053 -0.0905">
         <inertial pos="0 0 0" mass="0.04" diaginertia="1.45e-6 1.10e-6 2.30e-6"/>
         <joint name="L_Slider_joint" type="slide" pos="0 0 0" range="0 0.02" axis="0 1 0" damping="0.08" armature="1.0e-5"/>
-        <geom pos="0 -0.053 0.086" type="mesh" mesh="L_Slider" material="black"/>             
-        <geom pos="0 -0.053 0.086" type="mesh" mesh="L_Finger" material="silver"/>
-        <site name="slider_pin2_site" pos="0 0 0" size="0.003" rgba="0 0.7 1 1"/>
+        <geom pos="0 -0.053 0.0905" type="mesh" mesh="L_Slider" material="black"/>
+        <geom pos="0 -0.053 0.0905" type="mesh" mesh="L_Finger" material="silver"/>
+        <site name="slider_pin2_site" pos="0 0 0" size="0.003" rgba="0 0.7 1 0"/>
       </body>      
     </body>
+    
+    <body name="L_Tip" pos="-0.366 -0.05 1" quat="-1 0 0 1">
+      <freejoint name="weld_free_joint_L_Tip"/>
+      <inertial pos="-0.001678 0 0.03298" mass="0.1" diaginertia="0.001124 0.001153 0.001498"/>
+      <geom pos="0 0 0" type="mesh" mesh="L_Tip" material="silver" quat="-1 0 0 0"/>
+    </body>
+    
+    <body name="R_Tip" pos="-0.366 -0.05 1" quat="-1 0 0 1">
+      <freejoint name="weld_free_joint_R_Tip"/>
+      <inertial pos="-0.001678 0 0.03298" mass="0.1" diaginertia="0.001124 0.001153 0.001498"/>
+      <geom pos="0 0 0" type="mesh" mesh="R_Tip" material="silver" quat="-1 0 0 0"/>
+    </body>
+      
+    
+    
+    
+    
   </worldbody>
   
   <equality>
