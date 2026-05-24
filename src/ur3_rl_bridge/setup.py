@@ -1,5 +1,13 @@
 import os
+import warnings
 from glob import glob
+
+# Harmless Debian pkg_resources noise during colcon build (ubuntu version strings).
+warnings.filterwarnings(
+    "ignore",
+    message=r".* is an invalid version and will not be supported",
+    module="pkg_resources",
+)
 
 from setuptools import find_packages, setup
 
@@ -38,6 +46,9 @@ setup(
             'noisy_camera_node = ur3_rl_bridge.noisy_camera_node:main',
             'handeye_tf_publisher = ur3_rl_bridge.handeye_tf_publisher_node:main',
             'tcp_task_pose_test = ur3_rl_bridge.tcp_task_pose_test_node:main',
+            'foundation_pose_bridge_node = ur3_rl_bridge.foundation_pose_bridge_node:main',
+            'foundation_pose_output_tf_node = ur3_rl_bridge.foundation_pose_output_tf_node:main',
+            'foundation_pose_depth_mono16_node = ur3_rl_bridge.foundation_pose_depth_mono16_node:main',
         ],
     },
 )

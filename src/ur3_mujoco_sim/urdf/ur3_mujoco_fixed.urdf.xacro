@@ -102,17 +102,46 @@
       <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
   </inertial>
     <visual>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <origin xyz="0 0 0" rpy="3.14159262 0 -1.57"/>
       <geometry>
-        <mesh filename="package://ur3_mujoco_sim/meshes/gripper_test.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://ur3_mujoco_sim/meshes/gripper/Case_Base.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </visual>
     <collision>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <origin xyz="0 0 0" rpy="3.14159262 0 -1.57"/>
       <geometry>
-        <mesh filename="package://ur3_mujoco_sim/meshes/gripper_test.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://ur3_mujoco_sim/meshes/gripper/Case_Base.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
+    
+    <visual>
+      <origin xyz="0 0 0" rpy="3.14159262 0 -1.57"/>
+      <geometry>
+        <mesh filename="package://ur3_mujoco_sim/meshes/gripper/Case_Latch.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="3.14159262 0 -1.57"/>
+      <geometry>
+        <mesh filename="package://ur3_mujoco_sim/meshes/gripper/Case_Latch.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+    
+    <visual>
+      <origin xyz="0 0 0" rpy="3.14159262 0 -1.57"/>
+      <geometry>
+        <mesh filename="package://ur3_mujoco_sim/meshes/gripper/Shaft.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="3.14159262 0 -1.57"/>
+      <geometry>
+        <mesh filename="package://ur3_mujoco_sim/meshes/gripper/Shaft.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  
+  
+    
   </link>
   <joint name="tool0_to_gripper_link" type="fixed">
     <parent link="$(arg tf_prefix)tool0"/>
@@ -139,13 +168,13 @@
   </joint>
   <link name="rl_camera_frame">
     <visual>
-      <origin xyz="0.0325 0 0" rpy="0 0 0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
         <mesh filename="package://ur3_mujoco_sim/meshes/d435i_8.obj" scale="0.1 0.1 0.1"/>
       </geometry>
     </visual>
     <collision>
-      <origin xyz="0.0325 0 0" rpy="0 0 0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
         <mesh filename="package://ur3_mujoco_sim/meshes/d435i_8.obj" scale="0.1 0.1 0.1"/>
       </geometry>
@@ -154,13 +183,14 @@
   <joint name="d435i_mount_to_rl_camera" type="fixed">
     <parent link="d435i_mount_link"/>
     <child link="rl_camera_frame"/>
-    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <origin xyz="0.0325 0 0" rpy="0 0 0"/>
   </joint>
+  <!-- REP-103 optical frame: Z into scene (+depth), X right, Y down in image. MuJoCo rl_camera uses euler 0 -π 0 on d435i body. -->
   <link name="camera_color_optical_frame"/>
   <joint name="rl_camera_to_camera_color_optical" type="fixed">
     <parent link="rl_camera_frame"/>
     <child link="camera_color_optical_frame"/>
-    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <origin xyz="0 0 0" rpy="0 0 -3.141592653589793"/>
   </joint>
 
   <!--
@@ -280,6 +310,14 @@
       <state_interface name="position"/>
       <state_interface name="velocity"/>
     </joint>
+
+    <!-- Sensor name must match MJCF camera name (rl_camera). Images/depth use optical frame (matches MJCF camera euler). -->
+    <sensor name="rl_camera">
+      <param name="frame_name">camera_color_optical_frame</param>
+      <param name="info_topic">/rl_camera/camera_info</param>
+      <param name="image_topic">/rl_camera/color</param>
+      <param name="depth_topic">/rl_camera/depth</param>
+    </sensor>
   </ros2_control>
 </robot>
 

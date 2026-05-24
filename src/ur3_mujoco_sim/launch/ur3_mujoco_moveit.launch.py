@@ -8,14 +8,61 @@ import xml.etree.ElementTree as ET
 from ament_index_python.packages import get_package_share_directory
 
 from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument, LogInfo, SetEnvironmentVariable
 from launch.substitutions import Command, FindExecutable, PathJoinSubstitution, LaunchConfiguration
-from launch.actions import DeclareLaunchArgument
 from launch.conditions import IfCondition
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue, ParameterFile
 from launch_ros.substitutions import FindPackageShare
 
 from ur_moveit_config.launch_common import load_yaml
+
+
+def _forced_headless_env() -> bool:
+    """If true, MuJoCo must not open a GLFW window (Ignores DISPLAY — use when DISPLAY is bogus).
+
+    Set before ``ros2 launch``::
+
+        export UR3_FORCE_MUJOCO_HEADLESS=1
+
+    This is common under Cursor/IDE terminals where ``DISPLAY`` may still be ``:0`` but GLFW cannot
+    create a window ("ERROR: could not create window").
+    """
+    val = os.environ.get("UR3_FORCE_MUJOCO_HEADLESS", "").strip().lower()
+    return val in ("1", "true", "yes", "on")
+
+
+def _has_gui_display() -> bool:
+    """True if DISPLAY is set (after source_ws.sh may have set :0 from /tmp/.X11-unix)."""
+    return bool(os.environ.get("DISPLAY", "").strip())
+
+
+# GUI on by default. Only opt out with UR3_FORCE_MUJOCO_HEADLESS=1 or headless:=true.
+# (Do not auto-headless when DISPLAY is unset — Cursor often omits DISPLAY; source_ws.sh fixes it.)
+_HEADLESS_AUTODEFAULT = "true" if _forced_headless_env() else "false"
+_GUI_FEATURES_AUTODEFAULT = "false" if _forced_headless_env() else "true"
+
+
+def _gui_environment_actions():
+    """Propagate DISPLAY/XAUTHORITY to all launch children (fixes GLX in IDE terminals)."""
+    actions = []
+    uid = os.getuid()
+    display = os.environ.get("DISPLAY", "").strip()
+    if display:
+        actions.append(SetEnvironmentVariable("DISPLAY", display))
+    xauth = os.environ.get("XAUTHORITY", "").strip()
+    if not xauth:
+        for candidate in (
+            f"/run/user/{uid}/gdm/Xauthority",
+            os.path.expanduser("~/.Xauthority"),
+        ):
+            if os.path.isfile(candidate):
+                xauth = candidate
+                break
+    if xauth:
+        actions.append(SetEnvironmentVariable("XAUTHORITY", xauth))
+    actions.append(SetEnvironmentVariable("QT_X11_NO_MITSHM", "1"))
+    return actions
 
 
 def _sample_non_overlapping_xy(
@@ -438,10 +485,31 @@ def generate_launch_description():
         ],
     )
 
+    _disp = os.environ.get("DISPLAY", "").strip() or "(unset)"
+    _xauth = os.environ.get("XAUTHORITY", "").strip() or "(unset)"
+    _headless_hint = (
+        f"MuJoCo launch: headless=TRUE (UR3_FORCE_MUJOCO_HEADLESS). DISPLAY={_disp} XAUTHORITY={_xauth}"
+        if _HEADLESS_AUTODEFAULT == "true"
+        else (
+            f"MuJoCo launch: headless=FALSE, enable_rviz default=FALSE. DISPLAY={_disp} XAUTHORITY={_xauth}. "
+            "Pass enable_rviz:=true for MoveIt RViz (may segfault on Ctrl+C if MuJoCo GUI is also open)."
+        )
+    )
+
     return LaunchDescription(
         [
+            *_gui_environment_actions(),
+            LogInfo(msg=_headless_hint),
             DeclareLaunchArgument("use_sim_time", default_value="true"),
-            DeclareLaunchArgument("headless", default_value="false"),
+            DeclareLaunchArgument(
+                "headless",
+                default_value=_HEADLESS_AUTODEFAULT,
+                description=(
+                    "If true, no MuJoCo GLFW window (physics + sensors still run). Needed when GLFW reports "
+                    "'could not create window'. Default: DISPLAY unset ⇒ true; DISPLAY set ⇒ false unless "
+                    "UR3_FORCE_MUJOCO_HEADLESS=1. enable_rviz does NOT imply headless."
+                ),
+            ),
             DeclareLaunchArgument(
                 "mujoco_model",
                 default_value=default_mujoco_scene,
@@ -455,7 +523,7 @@ def generate_launch_description():
             DeclareLaunchArgument("enable_object_manager", default_value="true"),
             DeclareLaunchArgument(
                 "enable_mujoco_rl_camera_preview",
-                default_value="true",
+                default_value=_GUI_FEATURES_AUTODEFAULT,
                 description="If true, open OpenCV depth preview for rl_camera (requires DISPLAY).",
             ),
             DeclareLaunchArgument(
@@ -465,13 +533,17 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "enable_yolo_object_preview",
-                default_value="true",
+                default_value=_GUI_FEATURES_AUTODEFAULT,
                 description="If true, run YOLO on noisy color camera and open an annotated OpenCV window.",
             ),
             DeclareLaunchArgument(
                 "enable_rviz",
-                default_value="true",
-                description="If true, open RViz with the MoveIt robot view.",
+                default_value="false",
+                description=(
+                    "If true, open RViz with the MoveIt robot view (requires DISPLAY). Default false: "
+                    "MuJoCo GLFW + RViz together can segfault on Ctrl+C during OpenGL teardown; use "
+                    "enable_rviz:=true only when you need the MoveIt RViz UI."
+                ),
             ),
             DeclareLaunchArgument(
                 "enable_handeye_tf",

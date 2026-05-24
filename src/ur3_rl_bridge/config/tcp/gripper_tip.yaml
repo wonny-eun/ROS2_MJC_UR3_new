@@ -7,7 +7,7 @@ child_frame: gripper_tip
 translation:
   x: 0.0
   y: 0.0
-  z: 0.125
+  z: 0.146136
 
 rotation_rpy:
   roll: 0.0

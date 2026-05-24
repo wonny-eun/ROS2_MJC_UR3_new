@@ -1,5 +1,7 @@
-# Eye-in-hand calibration result for the D435i mounted on the UR3 gripper.
-# Replace these numbers after running real hand-eye calibration.
+# Eye-in-hand calibration for tool0 -> camera_color_optical_frame.
+# Default launch keeps enable_handeye_tf:=false; URDF publishes tool0 -> ... -> rl_camera_frame -> camera_color_optical_frame.
+# Do not enable hand-eye TF and URDF camera links at the same time (duplicate TF).
+# If enable_handeye_tf:=true, set rotation_xyzw to match your calibrated optical orientation (URDF default: pitch -π from rl_camera_frame).
 parent_frame: tool0
 child_frame: camera_color_optical_frame
 
@@ -8,7 +10,6 @@ translation:
   y: 0.07
   z: 0.05
 
-# Quaternion order is x, y, z, w.
 rotation_xyzw:
   x: 0.0
   y: 0.0

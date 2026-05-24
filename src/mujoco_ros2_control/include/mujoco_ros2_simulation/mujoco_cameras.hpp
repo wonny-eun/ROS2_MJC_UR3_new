@@ -138,7 +138,8 @@ private:
 
   // Camera processing thread
   std::thread rendering_thread_;
-  std::atomic_bool publish_images_;
+  std::atomic_bool publish_images_{ false };
+  std::atomic_bool gl_context_ready_{ false };
 };
 
 }  // namespace mujoco_ros2_simulation

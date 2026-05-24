@@ -1,5 +1,12 @@
 import os
+import warnings
 from glob import glob
+
+warnings.filterwarnings(
+    "ignore",
+    message=r".* is an invalid version and will not be supported",
+    module="pkg_resources",
+)
 
 from setuptools import find_packages, setup
 

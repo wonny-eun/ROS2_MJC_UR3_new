@@ -51,7 +51,7 @@ from tf2_geometry_msgs.tf2_geometry_msgs import do_transform_point
 RGB_TOPIC = "/rl_camera/color"
 DEPTH_TOPIC = "/rl_camera/depth"
 CAMERA_INFO_TOPIC = "/rl_camera/camera_info"
-CAMERA_OPTICAL_FRAME = "rl_camera_frame"  # depth/RGB frame_id from MuJoCo bridge
+CAMERA_OPTICAL_FRAME = "camera_color_optical_frame"
 WORLD_FRAME = "world"
 
 # MoveIt

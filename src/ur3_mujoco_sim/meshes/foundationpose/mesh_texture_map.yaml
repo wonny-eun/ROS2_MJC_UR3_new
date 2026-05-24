@@ -1,0 +1,13 @@
+# Auto-generated — set FOUNDATION_POSE_OBJECT or export per class
+
+Box_1:
+  mesh: meshes/foundationpose/square_1.obj
+  texture: meshes/foundationpose/square_1_texture.jpg
+
+Cylinder_1:
+  mesh: meshes/foundationpose/cylinder_1.obj
+  texture: meshes/foundationpose/cylinder_1_texture.jpg
+
+Cylinder_2:
+  mesh: meshes/foundationpose/cylinder_2.obj
+  texture: meshes/foundationpose/cylinder_2_texture.jpg

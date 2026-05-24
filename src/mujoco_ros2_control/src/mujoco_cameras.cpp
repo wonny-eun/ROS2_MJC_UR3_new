@@ -24,12 +24,27 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <random>
+#include <string>
 
 using namespace std::chrono_literals;
 
 namespace mujoco_ros2_simulation
 {
+
+namespace
+{
+thread_local std::string g_mj_camera_gl_error;
+
+void mj_camera_error_cb(const char* msg)
+{
+  if (msg != nullptr)
+  {
+    g_mj_camera_gl_error = msg;
+  }
+}
+}  // namespace
 
 MujocoCameras::MujocoCameras(rclcpp::Node::SharedPtr& node, std::recursive_mutex* sim_mutex, mjData* mujoco_data,
                              mjModel* mujoco_model, double camera_publish_rate, double rgb_noise_sigma,
@@ -38,11 +53,14 @@ MujocoCameras::MujocoCameras(rclcpp::Node::SharedPtr& node, std::recursive_mutex
   , sim_mutex_(sim_mutex)
   , mj_data_(mujoco_data)
   , mj_model_(mujoco_model)
+  , mj_camera_data_(nullptr)
   , camera_publish_rate_(camera_publish_rate)
   , rgb_noise_sigma_(std::max(0.0, rgb_noise_sigma))
   , depth_noise_sigma_m_(std::max(0.0, depth_noise_sigma_m))
   , depth_quant_step_m_(std::max(0.0, depth_quant_step_m))
   , depth_dropout_prob_(std::clamp(depth_dropout_prob, 0.0, 1.0))
+  , publish_images_(false)
+  , gl_context_ready_(false)
 {
 }
 
@@ -150,6 +168,19 @@ void MujocoCameras::init()
   rendering_thread_ = std::thread(&MujocoCameras::update_loop, this);
 }
 
+namespace
+{
+void apply_offscreen_glfw_hints()
+{
+  // Match simulate/glfw_adapter.cc (compatibility GL). Do NOT request OpenGL core profile:
+  // mjr_makeContext allocates GLX bitmap fonts via display lists, which fails on core profile
+  // with "Could not allocate font lists" / GL_INVALID_ENUM (0x500).
+  glfwDefaultWindowHints();
+  glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+  glfwWindowHint(GLFW_SAMPLES, 4);
+}
+}  // namespace
+
 void MujocoCameras::close()
 {
   publish_images_ = false;
@@ -158,15 +189,34 @@ void MujocoCameras::close()
     rendering_thread_.join();
   }
 
-  mjv_freeScene(&mjv_scn_);
-  mjr_freeContext(&mjr_con_);
+  if (gl_context_ready_)
+  {
+    mjv_freeScene(&mjv_scn_);
+    mjr_freeContext(&mjr_con_);
+    gl_context_ready_ = false;
+  }
+  if (mj_camera_data_ != nullptr)
+  {
+    mj_deleteData(mj_camera_data_);
+    mj_camera_data_ = nullptr;
+  }
 }
 
 void MujocoCameras::update_loop()
 {
   // We create an offscreen context specific to this process for managing camera rendering.
-  glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
-  GLFWwindow* window = glfwCreateWindow(1, 1, "", NULL, NULL);
+  apply_offscreen_glfw_hints();
+  GLFWwindow* window = glfwCreateWindow(640, 480, "mujoco_cameras_offscreen", NULL, NULL);
+  if (window == nullptr)
+  {
+    RCLCPP_ERROR(
+        node_->get_logger(),
+        "Failed to create offscreen GLFW window for MuJoCo cameras. Physics and MoveIt will continue, but "
+        "/rl_camera/* will not publish. Use a desktop terminal with working OpenGL, or before launch run: "
+        "export LIBGL_ALWAYS_SOFTWARE=1");
+    publish_images_ = false;
+    return;
+  }
   glfwMakeContextCurrent(window);
 
   // Initialization of the context and data structures has to happen in the rendering thread
@@ -180,11 +230,39 @@ void MujocoCameras::update_loop()
 
   // Initialize data for camera rendering
   mj_camera_data_ = mj_makeData(mj_model_);
-  RCLCPP_INFO(node_->get_logger(), "Starting the camera rendering loop, publishing at %f Hz", camera_publish_rate_);
+  if (mj_camera_data_ == nullptr)
+  {
+    RCLCPP_ERROR(node_->get_logger(), "mj_makeData failed for camera rendering thread; disabling camera publishing.");
+    glfwDestroyWindow(window);
+    publish_images_ = false;
+    return;
+  }
 
-  // create scene and context
+  auto prev_error = mju_user_error;
+  mju_user_error = mj_camera_error_cb;
+  g_mj_camera_gl_error.clear();
   mjv_makeScene(mj_model_, &mjv_scn_, 2000);
   mjr_makeContext(mj_model_, &mjr_con_, mjFONTSCALE_150);
+  mju_user_error = prev_error;
+
+  if (!g_mj_camera_gl_error.empty())
+  {
+    RCLCPP_ERROR(
+        node_->get_logger(),
+        "MuJoCo camera OpenGL init failed (%s). Physics and MoveIt will continue, but /rl_camera/* will not "
+        "publish. For IDE/SSH terminals try: export LIBGL_ALWAYS_SOFTWARE=1 and headless:=true. For the full "
+        "vision pipeline (YOLO/FoundationPose), run the launch from a normal desktop terminal.",
+        g_mj_camera_gl_error.c_str());
+    mjv_freeScene(&mjv_scn_);
+    mj_deleteData(mj_camera_data_);
+    mj_camera_data_ = nullptr;
+    glfwDestroyWindow(window);
+    publish_images_ = false;
+    return;
+  }
+
+  gl_context_ready_ = true;
+  RCLCPP_INFO(node_->get_logger(), "Starting the camera rendering loop, publishing at %f Hz", camera_publish_rate_);
 
   // Ensure the context will support the largest cameras
   int max_width = 1, max_height = 1;
@@ -203,6 +281,8 @@ void MujocoCameras::update_loop()
     update();
     rate.sleep();
   }
+
+  glfwDestroyWindow(window);
 }
 
 void MujocoCameras::update()

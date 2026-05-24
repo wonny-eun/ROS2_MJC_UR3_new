@@ -20,132 +20,149 @@ motion:
   default_jump_threshold: 2.0
   default_min_fraction: 0.95
 
-# Vision (YOLO + camera topics). Used by type: yolo_visual_center (or yolo_visual_lookat_and_approach).
-# Camera topics are subscribed only when that action starts (no buffering from ros2 run through earlier steps).
-# Flow: (1) YOLO lock + Cartesian optical centering (default); (2) optical approach (smooth trajectory).
-# Optional: yolo_visual_center_centering_mode: servo (requires servo_node in launch). Tune yolo_center_* / yolo_servo_*.
-# Restore grasp frame before approach: yolo_visual_center_restore_pick_orientation_before_approach + lookat_vector/tcp_roll_rad.
-# yolo_tracking_* , yolo_visual_center_acquire_* , yolo_visual_center_redetect_* .
-# approach_max_iterations, approach_step_max_m — see vision defaults in action_sequencer._merge_vision_config.
-# YOLO dropout smoothing / acquisition: yolo_tracking_* , yolo_predict_conf_floor, yolo_class_match_case_insensitive,
-# yolo_visual_center_acquire_* (initial lock), yolo_visual_center_redetect_* (last pose + camera nudges after N misses).
-# Principal-point centering matches pinhole rays: center_tolerance_px vs (cx,cy) from CameraInfo.
-# yolo_visual_center_single_motion: false → iterative centering + approach until depth/center tolerances.
+# Vision: merged with action_sequencer._merge_vision_config defaults (only entries below override the code defaults).
+# MUST match ur3_mujoco_moveit.launch.py: yolo_model_path + /rl_camera/noisy/* (same as yolo_object_preview).
+# If preview shows Box_1 ~0.98 but sequencer sees ~0.02, you were on different weights/topics.
 vision:
-  yolo_model_path: /home/wonny/ur3_control/runs/segment/ur3_multi_sim_real/weights/best.pt
-  min_confidence: 0.4
-  target_distance_m: 0.38
-  rgb_topic: /rl_camera/color
-  depth_topic: /rl_camera/depth
+  yolo_model_path: /home/wonny/ur3_control/runs/segment/ur3_multi_sim_real_ultra/weights/best.pt
+  rgb_topic: /rl_camera/noisy/color
+  depth_topic: /rl_camera/noisy/depth
   camera_info_topic: /rl_camera/camera_info
-  camera_optical_frame: rl_camera_frame
-  max_iterations: 8
-  approach_max_iterations: 10
-  approach_step_max_m: 0.06
-  yolo_visual_center_smooth_approach: true
-  center_tolerance_px: 15
-  # servo = smooth velocity (base_link, same direction as Cartesian); cartesian = position stream fallback
-  yolo_visual_center_centering_mode: servo
-  center_max_iterations: 40
-  yolo_center_step_gain: 0.35
-  yolo_center_max_step_m: 0.012
-  yolo_center_max_duration_sec: 60
-  yolo_center_path_segments: 20
-  yolo_center_cartesian_max_step_m: 0.002
-  yolo_center_velocity_scaling: 0.05
-  yolo_center_acceleration_scaling: 0.05
-  yolo_center_redetect_after_misses: 30
-  yolo_center_use_raw_detection: true
-  yolo_visual_center_require_centered_on_complete: true
+  min_confidence: 0.6
+  # One product in view; resolves Cylinder_1 vs Cylinder_2 label flip on the SAME object.
+  # Selection prefers target_class (Box_1 when you pick Box_1), not highest conf across types.
+  yolo_exclusive_scene_classes:
+    - Box_1
+    - Cylinder_1
+    - Cylinder_2
+  # Standoff depth along camera optical axis (350 mm = 0.35 m).
+  target_distance_m: 0.35
+  # One YOLO sample after Look → single MoveGroup IK (no Cartesian path / nudge loop).
+  yolo_visual_center_centering_mode: moveit_one_shot
   yolo_visual_center_avoid_collisions: true
-  yolo_servo_rate_hz: 15
-  yolo_servo_max_duration_sec: 90
-  yolo_servo_use_raw_only: false
-  yolo_servo_use_smoothed_for_twist: true
-  yolo_servo_use_optical_ibvs: true
-  yolo_servo_cartesian_fallback: true
-  yolo_servo_offset_ema_alpha: 0.28
-  yolo_servo_velocity_ema_alpha: 0.28
-  yolo_servo_max_twist_delta_m_s: 0.004
-  yolo_servo_cartesian_speed_scale: 0.45
-  yolo_servo_diverge_correct_after: 0
-  yolo_servo_cartesian_nudge_every_sec: 0
-  yolo_servo_cartesian_nudge_min_metric_px: 80
-  yolo_servo_diverge_min_metric_px: 120
-  yolo_servo_match_cartesian_gain: false
-  yolo_servo_gain_scale: 0.22
-  yolo_servo_linear_gain: 0.35
-  yolo_servo_velocity_in_base: true
-  yolo_servo_command_frame: rl_camera_frame
-  yolo_servo_ibvs_sign: -1.0
-  yolo_servo_ibvs_sign_u: 1.0
-  yolo_servo_ibvs_sign_v: -1.0
-  yolo_servo_max_axis_offset_px: 95
-  yolo_servo_diverge_abort_streak: 0
-  yolo_servo_cmd_on_keepalive: true
-  yolo_servo_slow_error_px: 100
-  yolo_servo_near_center_ramp_px: 100
-  yolo_servo_near_center_min_scale: 0.35
-  yolo_servo_deadband_px: 8
-  yolo_servo_fine_pass: true
-  yolo_servo_fine_pass_max_duration_sec: 20
-  yolo_servo_fine_pass_max_linear_m_s: 0.005
-  yolo_servo_cross_brake_frames: 0
-  yolo_servo_warmup_raw_frames: 2
-  yolo_servo_redetect_after_misses: 15
-  yolo_redetect_skip_snap_back_after_servo: true
-  yolo_servo_angular_gain: 0.0
-  yolo_servo_use_angular: false
-  yolo_servo_max_linear_m_s: 0.007
-  yolo_servo_max_angular_rad_s: 0.15
-  yolo_servo_stable_frames: 3
+  yolo_visual_center_recenter_at_depth: false
+  yolo_visual_center_recenter_on_approach_drift: false
+  # 0 = absolute depth goal (target_distance_m), not "move N m closer from current depth".
+  yolo_visual_center_approach_forward_m: 0.0
   yolo_visual_center_single_motion: false
-  yolo_visual_center_single_motion_max_translation_m: 2.0
-  yolo_predict_conf_floor: 0.01
-  yolo_class_match_case_insensitive: true
+  yolo_center_max_plan_iterations: 5
+  yolo_single_motion_center_max_nudges: 2
+  yolo_center_allow_soft_complete: false
+  yolo_center_tolerance_metric: l1
+  yolo_center_direct_path_segments: 1
+  yolo_center_direct_fraction: 1.0
+  yolo_center_direct_step_gain: 1.0
+  yolo_center_command_ema_alpha: 0.0
+  yolo_center_after_stream_spin_frames: 8
+  yolo_center_after_stream_spin_period_sec: 0.04
+  yolo_visual_center_recenter_at_depth: true
+  yolo_visual_center_recenter_at_depth_max_nudges: 3
+  yolo_visual_center_recenter_on_approach_drift: true
+  max_iterations: 5
+  approach_max_iterations: 4
+  # Must be below target_distance_m (0.37); 0.35 blocked retreat-toward-goal (terminal bug).
+  yolo_visual_center_min_detection_depth_m: 0.30
+  center_tolerance_px: 5
+  # MoveIt often reports ~0.42 on short lateral nudges; 0.45 rejects valid paths (see terminal).
+  yolo_center_min_fraction: 0.32
+  yolo_center_min_fraction_relaxed: 0.02
+  yolo_center_cartesian_max_step_m: 0.001
+  yolo_center_skip_collision_check: true
+  yolo_visual_center_avoid_collisions: false
+  center_max_iterations: 5
+  distance_tolerance_m: 0.01
+  yolo_center_adaptive_far_metric_px: 130
+  yolo_center_adaptive_near_metric_px: 45
+  yolo_center_step_gain: 0.37
+  yolo_center_max_step_m: 0.013
+  yolo_center_step_gain_near: 0.30
+  yolo_center_step_gain_far: 0.56
+  yolo_center_max_step_m_near: 0.008
+  yolo_center_max_step_m_far: 0.021
+  yolo_center_velocity_scaling_near: 0.052
+  yolo_center_velocity_scaling_far: 0.10
+  yolo_center_pixel_direct: true
+  yolo_center_direct_max_step_m_hard_abs: 0.14
+  # If lateral centering fails (fixed TCP orientation), rotate camera in optical frame.
+  yolo_center_enable_orient_fallback: true
+  yolo_center_orient_max_attempts: 4
+  yolo_center_orient_max_step_rad: 0.085
+  yolo_center_orient_step_gain: 0.42
+  # camera_color_optical_frame vs rl_camera_frame (URDF rpy 0 0 -π): X flipped, Y unchanged from pre-optical tuning.
+  yolo_center_orient_sign_u: -1.0
+  yolo_center_orient_sign_v: -1.0
+  yolo_servo_ibvs_sign_u: -1.0
+  yolo_servo_ibvs_sign_v: -1.0
+  # Safer vs arm self-collision: YOLO goals via MoveIt IK + joint plan (no straight Cartesian).
+  # yolo_visual_center_centering_mode: moveit_ik
+  yolo_servo_rate_hz: 15
+  yolo_servo_use_optical_ibvs: false
+  yolo_servo_command_frame: camera_color_optical_frame
+  yolo_servo_linear_gain: 0.22
+  yolo_servo_max_linear_m_s: 0.006
   yolo_visual_center_acquire_max_attempts: 120
-  yolo_visual_center_acquire_min_confidence: 0.25
-  yolo_visual_center_acquire_spin_sec: 0.05
-  yolo_visual_center_redetect_after_misses: 10
-  yolo_visual_center_redetect_max_sessions: 3
-  yolo_visual_center_redetect_velocity_scaling: 0.15
-  yolo_visual_center_redetect_nudge_step_m: 0.012
-  yolo_visual_center_redetect_nudge_max_trials: 16
-  yolo_visual_center_min_detection_depth_m: 0.35
+  # Bootstrap lock: Box_1 often 0.02–0.08 when cylinders dominate FOV; depth uses center ROI fallback.
+  yolo_visual_center_acquire_min_confidence: 0.02
+  yolo_depth_min_bbox_pixels: 4
+  depth_roi_half_px: 12
   yolo_tracking_keep_alive_max_misses: 25
-  # Keep Look/centering camera pose through approach; pick lookat [0,0,-1] is for grasp steps only.
-  yolo_visual_center_restore_pick_orientation_before_approach: false
-  distance_tolerance_m: 0.025
-  step_gain: 0.45
-  default_target_class: ""
+
+
+
+
+
+
+
+
+# FoundationPose: only chained in sequences.Cylinder_2 for now (add same block to Box_1 / Cylinder_1 when ready).
+#   ros2 launch ur3_rl_bridge foundation_pose_bridge.launch.py
+foundation_pose:
+  bridge_trigger_service: /foundation_pose_bridge/trigger
+  bridge_set_parameters_service: /foundation_pose_bridge/set_parameters
+  object_tf_child_frame: fp_object
+  # Smooth fp_object TF from FoundationPose /output (foundation_pose_output_tf_node).
+  tf_filter_enable: true
+  tf_filter_window: 10
+  tf_filter_require_full_window: false
+  tf_reference_frame: base_link
+  wait_tf_timeout_sec: 45.0
+  record_bbox_snapshot_on_yolo_complete: true
+  # YOLO label is Box_1; mesh file is square_1.obj — alias CAD names to detector class.
+  yolo_class_aliases:
+    square_1: Box_1
+    box_1: Box_1
+  bridge_trigger_min_confidence: 0.5
+  sync_vision_camera_topics: true
+  symmetry_axes_by_class_text: "Cylinder_*: set z_full (or correct axis) on Isaac launch after verifying OBJ axis"
+  mesh_relative_by_class:
+    Cylinder_1: meshes/foundationpose/cylinder_1.obj
+    Cylinder_2: meshes/foundationpose/cylinder_2.obj
+    cylinder_1: meshes/foundationpose/cylinder_1.obj
+    cylinder_2: meshes/foundationpose/cylinder_2.obj
+    Box_1: meshes/foundationpose/square_1.obj
+    box_1: meshes/foundationpose/square_1.obj
+
+
+
+
+
+
 
 object_sequences:
-  Cylinder_1: [Cylinder_Module1, Cylinder_1_Module2]
-  # Fast YOLO-only path (Look → center/approach). Use Target Object: Cylinder_2 or cylinder_2.
-  Cylinder_2: [Cylinder_2_YOLO_Test]
-  cylinder_2: [Cylinder_2_YOLO_Test]
-  Box_1: [Box_1_Module1, Box_1_Module2]
+  # Box_1: YOLO look + center + approach only. Append Box_1_Module1/2 for full pick.
+  Box_1: [Box_1, Box_1_Module1, Box_1_Module2]
+  Cylinder_1: [Cylinder_1]
+  Cylinder_2: [Cylinder_2]
 
-# =============================================================================
-# Named presets (edit here; reference from any action under sequences:)
-#
-# MoveIt / RViz (planning scene) — independent of MuJoCo physics:
-#   Per-action keys on any step:
-#     keepout_preset: <name>   (alias: forbidden_zone) — adds axis-aligned obstacle before the step;
-#                              removed after the step if keepout_remove_after: true (default).
-#     attach_preset: <name>   — attached collision on tool0 (or link_name in preset)
-#     detach_preset: <name>   — runs before attach_preset if both are set
-#   Or use type: planning_scene with operation + preset: <name>
-#
-# MuJoCo sim only (plate/case weld services today — tool0 module attach is config-first):
-#   weld: mujoco_weld_preset: <name>  merges fields from mujoco_weld_presets below.
-#   When you add new Trigger services in mujoco_ros2_control, only change YAML here.
-#
-# Six product lines (Box_1_module_2, not Box_2): Cylinder_1/2 module_1/2, Box_1 module_1/2.
-# =============================================================================
 
+
+
+
+
+
+
+# Named presets (referenced by attach_preset / mujoco_weld_preset on sequence steps).
 forbidden_zone_presets:
-  # Example: forbidden region while running Module_2_Visual_Center_YOLO (tune to your table).
   module2_yolo_forbidden:
     object_id: fz_module2_yolo
     frame_id: base_link
@@ -156,46 +173,13 @@ forbidden_zone_presets:
     z_min: 0.01
     z_max: 0.115
 
+
+
+
+
+
 planning_attach_presets:
-  # Attached bodies are MoveIt collision objects (PlanningScene), shown in RViz MotionPlanning → Scene Geometry.
-  # Per object: shape box (default): dimensions [dx, dy, dz].  shape cylinder: dimensions [height, radius]
-  # (ROS: axis along +Z of the object pose; tilt with pose_rpy in link frame).
-  Cylinder_1_module_1_attach_tool0:
-    link_name: tool0
-    touch_links: [wrist_3_link, tool0, gripper_link]
-    objects:
-      - id: attach_cyl1_m1
-        shape: cylinder
-        dimensions: [0.12, 0.038]
-        pose_xyz: [0.0, 0.0, 0.07]
-        pose_rpy: [0, 0, 0]
-  Cylinder_1_module_2_attach_tool0:
-    link_name: tool0
-    touch_links: [wrist_3_link, tool0, gripper_link]
-    objects:
-      - id: attach_cyl1_m2
-        shape: cylinder
-        dimensions: [0.10, 0.032]
-        pose_xyz: [0.0, -0.02, 0.09]
-        pose_rpy: [0, 0, 0]
-  Cylinder_2_module_1_attach_tool0:
-    link_name: tool0
-    touch_links: [wrist_3_link, tool0, gripper_link]
-    objects:
-      - id: attach_cyl2_m1
-        shape: cylinder
-        dimensions: [0.12, 0.038]
-        pose_xyz: [0.0, 0.0, 0.07]
-        pose_rpy: [0, 0, 0]
-  Cylinder_2_module_2_attach_tool0:
-    link_name: tool0
-    touch_links: [wrist_3_link, tool0, gripper_link]
-    objects:
-      - id: attach_cyl2_m2
-        shape: cylinder
-        dimensions: [0.10, 0.032]
-        pose_xyz: [0.0, -0.02, 0.09]
-        pose_rpy: [0, 0, 0]
+
   Box_1_module_1_attach_tool0:
     link_name: tool0
     touch_links: [wrist_3_link, tool0, gripper_link]
@@ -213,19 +197,12 @@ planning_attach_presets:
         pose_xyz: [0.0, -0.02, 0.09]
         pose_rpy: [0, 0, 0]
 
+
+
+
+
+
 planning_detach_presets:
-  Cylinder_1_module_1_detach_tool0:
-    link_name: tool0
-    object_ids: [attach_cyl1_m1]
-  Cylinder_1_module_2_detach_tool0:
-    link_name: tool0
-    object_ids: [attach_cyl1_m2]
-  Cylinder_2_module_1_detach_tool0:
-    link_name: tool0
-    object_ids: [attach_cyl2_m1]
-  Cylinder_2_module_2_detach_tool0:
-    link_name: tool0
-    object_ids: [attach_cyl2_m2]
   Box_1_module_1_detach_tool0:
     link_name: tool0
     object_ids: [attach_box1_m1]
@@ -233,207 +210,34 @@ planning_detach_presets:
     link_name: tool0
     object_ids: [attach_box1_m2]
 
+
+
+
+
 mujoco_weld_presets:
-  # Module-1 style: plate welds to Case_Base (implemented in mujoco_ros2_control).
-  Cylinder_1_module_1_case:
-    target_pose_topic: /mujoco/weld/module_1_plate_case_offset
-    service_name: /mujoco/weld/module_1_plate_attach_case_base
-    target_frame: Case_Base
-    target_xyz: [0.0, 0.0, 0.0]
-    target_quat_xyzw: [-0.707, 0.707, 0, 0]
-    pose_settle_sec: 0.05
-  Cylinder_1_module_2_tool0:
-    # TODO: point to your MuJoCo Trigger + PoseStamped topic when module_2-on-tool0 is implemented.
-    # Until then, duplicate the case service or leave unused in sequences.
-    target_pose_topic: /mujoco/weld/module_1_plate_case_offset
-    service_name: /mujoco/weld/module_1_plate_attach_case_base
-    target_frame: Case_Base
-    target_xyz: [0.0, 0.0, 0.0]
-    target_quat_xyzw: [-0.707, 0.707, 0, 0]
-    pose_settle_sec: 0.05
-  Cylinder_2_module_1_case:
-    target_pose_topic: /mujoco/weld/module_1_plate_case_offset
-    service_name: /mujoco/weld/module_1_plate_attach_case_base
-    target_frame: Case_Base
-    target_xyz: [0.0, 0.0, 0.0]
-    target_quat_xyzw: [-0.707, 0.707, 0, 0]
-    pose_settle_sec: 0.05
-  Cylinder_2_module_2_tool0:
-    target_pose_topic: /mujoco/weld/module_1_plate_case_offset
-    service_name: /mujoco/weld/module_1_plate_attach_case_base
-    target_frame: Case_Base
-    target_xyz: [0.0, 0.0, 0.0]
-    target_quat_xyzw: [-0.707, 0.707, 0, 0]
-    pose_settle_sec: 0.05
   Box_1_module_1_case:
     target_pose_topic: /mujoco/weld/module_1_plate_case_offset
     service_name: /mujoco/weld/module_1_plate_attach_case_base
     target_frame: Case_Base
     target_xyz: [0.0, 0.0, 0.0]
-    target_quat_xyzw: [0.707, 0.0, -0.707, 0.0]
+    target_quat_xyzw: [-0.707, 0.707, 0.0, 0.0]
     pose_settle_sec: 0.05
   Box_1_module_2_tool0:
     target_pose_topic: /mujoco/weld/module_1_plate_case_offset
     service_name: /mujoco/weld/module_1_plate_attach_case_base
     target_frame: Case_Base
     target_xyz: [0.0, 0.0, 0.0]
-    target_quat_xyzw: [0.707, 0.0, -0.707, 0.0]
+    target_quat_xyzw: [-0.707, 0.707, 0.0, 0.0]
     pose_settle_sec: 0.05
-
+    
+    
+    
+    
+    
+    
 sequences:
-  Cylinder_Module1:
-    # Optional: snap Module_1_Plate to MJCF table pose before approach (fixes soft-weld creep at startup).
-    # Uncomment if the plate visibly drifts before the first grasp.
-    # - name: Plate_Reset_Table_Hold
-    #   type: trigger
-    #   service_name: /mujoco/weld/module_1_plate_reset_table_hold
-
-    - name: Home
-      type: joint
-      target: [-1.1087415474606372, -2.486418483252553, 0.8887611840430981, -0.5784636843911983, -1.636715068954524, -3.141592]
-      velocity_scaling: 0.2
-      acceleration_scaling: 0.2
-      delay_after_sec: 2.0
-      
-      
-      
-    - name: Stage_1_Approach
-      type: waypoint
-      blending_radius: 0.02
-      velocity_scaling: 0.05
-      acceleration_scaling: 0.1
-      waypoints:
-        # Joint waypoint: fastest/stablest for known safe robot postures.
-        - name: Stage_1_Module_1_Approach
-          type: joint
-          target: [-1.570796326794896, -1.570796326794896, 1.570796326794896, -1.570796326794896, -1.570796326794896, -3.141592]
-
-        # Cartesian waypoint: TCP target solved through MoveIt IK.
-        - name: Stage_1_Module_1_Target
-          type: cartesian
-          target_xyz: [0.05, -0.20, 0.2]
-          lookat_vector: [0.0, 0.0, -1.0]
-          tcp_roll_rad: 1.570796326794896
-          
-    - name: Stage_1_Module_1_Lower
-      type: cartesian
-      cartesian_mode: linear
-      target_xyz: [0.05, -0.20, 0.072]
-      lookat_vector: [0.0, 0.0, -1.0]
-      tcp_roll_rad: 1.570796326794896
-      max_step_m: 0.0005
-      min_fraction: 0.95
-      velocity_scaling: 0.1
-      acceleration_scaling: 0.1
-      delay_after_sec: 0.5
-
-    # MuJoCo weld: simulation snaps Module_1_Plate to Case_Base using this Case_Base-frame offset,
-    # then enables the plate–Case_Base equality (see mujoco_ros2_simulation attach service).
-    # Zeros + identity = plate body origin aligned with Case_Base origin/orientation (matches MoveIt TCP pose).
-    - name: Weld_Module_1_To_Case_Base
-      type: weld
-      mujoco_weld_preset: Cylinder_1_module_1_case
-      delay_after_sec: 0.6
-      
-
-
-    - name: Stage_1_Module_1_Upper
-      type: cartesian
-      cartesian_mode: linear
-      target_xyz: [0.05, -0.20, 0.20]
-      lookat_vector: [0.0, 0.0, -1.0]
-      tcp_roll_rad: 1.570796326794896
-      max_step_m: 0.0005
-      min_fraction: 0.95
-      velocity_scaling: 0.1
-      acceleration_scaling: 0.1
-      delay_after_sec: 0.5
-      attach_preset: Cylinder_1_module_1_attach_tool0
-      
-      
-          
-    - name: Stage_1_Module_2_Target
-      type: cartesian
-      cartesian_mode: moveit
-      target_xyz: [0.05, -0.366, 0.20]
-      lookat_vector: [0.0, 0.0, -1.0]
-      tcp_roll_rad: 0
-      velocity_scaling: 0.15
-      acceleration_scaling: 0.15
-      delay_after_sec: 0.2
-
-
-  Cylinder_1_Module2:
-
-    - name: Stage_1_Module_2_Lower
-      type: cartesian
-      cartesian_mode: linear
-      target_xyz: [0.05, -0.366, 0.076]
-      lookat_vector: [0.0, 0.0, -1.0]
-      tcp_roll_rad: 0
-      max_step_m: 0.005
-      min_fraction: 0.95
-      velocity_scaling: 0.1
-      acceleration_scaling: 0.1
-      delay_after_sec: 0.5
-
-    - name: Weld_Module_2_Tips_To_Fingers
-      type: trigger
-      service_name: /mujoco/weld/module_2_tips_attach_fingers
-      wait_timeout_sec: 10.0
-      call_timeout_sec: 15.0
-      delay_after_sec: 0.2
-
-    - name: Stage_1_Module_2_Upper
-      type: cartesian
-      cartesian_mode: linear
-      target_xyz: [0.05, -0.366, 0.20]
-      lookat_vector: [0.0, 0.0, -1.0]
-      tcp_roll_rad: 0
-      max_step_m: 0.005
-      min_fraction: 0.95
-      velocity_scaling: 0.1
-      acceleration_scaling: 0.1
-      delay_after_sec: 0.5
-
-    # YOLO from Stage_1_Module_2_Upper — Cartesian optical center, then approach.
-    - name: Module_2_Visual_Center_YOLO
-      type: yolo_visual_center
-      target_class: Cylinder_1
-      lookat_vector: [0.0, 0.0, -1.0]
-      tcp_roll_rad: 1.570796326794896
-      yolo_visual_center_restore_pick_orientation_before_approach: false
-      avoid_collisions: true
-      velocity_scaling: 0.12
-      acceleration_scaling: 0.12
-      max_step_m: 0.005
-      min_fraction: 0.85
-      delay_after_sec: 0.3
-
-    - name: Detach_Module_2_Tips_To_World
-      type: trigger
-      service_name: /mujoco/weld/module_2_tips_detach_world
-      wait_timeout_sec: 10.0
-      call_timeout_sec: 15.0
-      delay_after_sec: 0.2
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  # YOLO dev: Look pose then cylinder_2 visual center (skips module-1 pick/weld).
-  Cylinder_2_YOLO_Test:
+  # YOLO: one-shot center + approach to 370 mm (vision.target_distance_m).
+  Box_1:
     - name: Look
       type: joint
       target: [-1.186824, -2.338741, 2.042035, -1.850049, -1.500983, -3.159046]
@@ -441,72 +245,25 @@ sequences:
       acceleration_scaling: 0.25
       delay_after_sec: 0.3
 
-    - name: Module_2_Visual_Center_YOLO
+    - name: Visual_Center_YOLO
       type: yolo_visual_center
-      target_class: cylinder_2
-      yolo_visual_center_centering_mode: servo
-      lookat_vector: [0.0, 0.0, -1.0]
-      tcp_roll_rad: 1.570796326794896
-      yolo_visual_center_restore_pick_orientation_before_approach: false
-      avoid_collisions: true
+      target_class: Box_1
+      yolo_visual_center_centering_mode: moveit_one_shot
+      # Only Box_1 in scene filter — avoids cylinder fallback when box conf is low.
+      yolo_exclusive_scene_classes: [Box_1]
+      yolo_visual_center_acquire_min_confidence: 0.02
+      min_confidence: 0.25
+      depth_roi_half_px: 12
+      yolo_visual_center_avoid_collisions: false
       velocity_scaling: 0.12
       acceleration_scaling: 0.12
-      max_step_m: 0.005
-      min_fraction: 0.85
+      max_step_m: 0.001
+      min_fraction: 0.32
+      approach_max_iterations: 4
+      yolo_visual_center_min_detection_depth_m: 0.30
       delay_after_sec: 0.2
 
-  Cylinder_2_Module2:
-    - name: Stage_1_Module_2_Lower
-      type: cartesian
-      cartesian_mode: linear
-      target_xyz: [0.05, -0.366, 0.076]
-      lookat_vector: [0.0, 0.0, -1.0]
-      tcp_roll_rad: 0
-      max_step_m: 0.005
-      min_fraction: 0.95
-      velocity_scaling: 0.1
-      acceleration_scaling: 0.1
-      delay_after_sec: 0.5
-
-    - name: Weld_Module_2_Tips_To_Fingers
-      type: trigger
-      service_name: /mujoco/weld/module_2_tips_attach_fingers
-      wait_timeout_sec: 10.0
-      call_timeout_sec: 15.0
-      delay_after_sec: 0.2
-
-    - name: Stage_1_Module_2_Upper
-      type: cartesian
-      cartesian_mode: linear
-      target_xyz: [0.05, -0.366, 0.20]
-      lookat_vector: [0.0, 0.0, -1.0]
-      tcp_roll_rad: 0
-      max_step_m: 0.005
-      min_fraction: 0.95
-      velocity_scaling: 0.1
-      acceleration_scaling: 0.1
-      delay_after_sec: 0.5
-
-    - name: Module_2_Visual_Center_YOLO
-      type: yolo_visual_center
-      target_class: cylinder_2
-      lookat_vector: [0.0, 0.0, -1.0]
-      tcp_roll_rad: 1.570796326794896
-      yolo_visual_center_restore_pick_orientation_before_approach: false
-      avoid_collisions: true
-      velocity_scaling: 0.12
-      acceleration_scaling: 0.12
-      max_step_m: 0.005
-      min_fraction: 0.85
-      delay_after_sec: 0.3
-
-    - name: Detach_Module_2_Tips_To_World
-      type: trigger
-      service_name: /mujoco/weld/module_2_tips_detach_world
-      wait_timeout_sec: 10.0
-      call_timeout_sec: 15.0
-      delay_after_sec: 0.2
-
+  # Full Box_1 pick path (restored): joint + waypoint + linear/moveit Cartesian + weld + YOLO.
   Box_1_Module1:
     - name: Home
       type: joint
@@ -514,31 +271,26 @@ sequences:
       velocity_scaling: 0.2
       acceleration_scaling: 0.2
       delay_after_sec: 2.0
-      
-      
-      
+
     - name: Stage_1_Approach
       type: waypoint
       blending_radius: 0.02
       velocity_scaling: 0.05
       acceleration_scaling: 0.1
       waypoints:
-        # Joint waypoint: fastest/stablest for known safe robot postures.
         - name: Stage_1_Module_1_Approach
           type: joint
           target: [-1.570796326794896, -1.570796326794896, 1.570796326794896, -1.570796326794896, -1.570796326794896, -3.141592]
-
-        # Cartesian waypoint: TCP target solved through MoveIt IK.
         - name: Stage_1_Module_1_Target
           type: cartesian
-          target_xyz: [0.05, -0.20, 0.2]
+          target_xyz: [0.05, -0.20, 0.1]
           lookat_vector: [0.0, 0.0, -1.0]
           tcp_roll_rad: 1.570796326794896
-          
+
     - name: Stage_1_Module_1_Lower
       type: cartesian
       cartesian_mode: linear
-      target_xyz: [0.05, -0.20, 0.035]
+      target_xyz: [0.05, -0.20, 0.013864]
       lookat_vector: [0.0, 0.0, -1.0]
       tcp_roll_rad: 1.570796326794896
       max_step_m: 0.0005
@@ -547,20 +299,15 @@ sequences:
       acceleration_scaling: 0.1
       delay_after_sec: 0.5
 
-    # MuJoCo weld: simulation snaps Module_1_Plate to Case_Base using this Case_Base-frame offset,
-    # then enables the plate–Case_Base equality (see mujoco_ros2_simulation attach service).
-    # Zeros + identity = plate body origin aligned with Case_Base origin/orientation (matches MoveIt TCP pose).
     - name: Weld_Module_1_To_Case_Base
       type: weld
-      mujoco_weld_preset: Cylinder_1_module_1_case
+      mujoco_weld_preset: Box_1_module_1_case
       delay_after_sec: 0.6
-      
-
 
     - name: Stage_1_Module_1_Upper
       type: cartesian
       cartesian_mode: linear
-      target_xyz: [0.05, -0.20, 0.20]
+      target_xyz: [0.05, -0.20, 0.10]
       lookat_vector: [0.0, 0.0, -1.0]
       tcp_roll_rad: 1.570796326794896
       max_step_m: 0.0005
@@ -568,29 +315,23 @@ sequences:
       velocity_scaling: 0.1
       acceleration_scaling: 0.1
       delay_after_sec: 0.5
-      attach_preset: Cylinder_1_module_1_attach_tool0
-      
-      
-          
+      attach_preset: Box_1_module_1_attach_tool0
+
     - name: Stage_1_Module_2_Target
       type: cartesian
       cartesian_mode: moveit
-      target_xyz: [0.05, -0.366, 0.20]
+      target_xyz: [0.05, -0.366, 0.10]
       lookat_vector: [0.0, 0.0, -1.0]
       tcp_roll_rad: 0
       velocity_scaling: 0.15
       acceleration_scaling: 0.15
       delay_after_sec: 0.2
-      
-      
-      
-      
-  Box_1_Module2:
 
+  Box_1_Module2:
     - name: Stage_1_Module_2_Lower
       type: cartesian
       cartesian_mode: linear
-      target_xyz: [0.05, -0.366, 0.08]
+      target_xyz: [0.05, -0.366, 0.058864]
       lookat_vector: [0.0, 0.0, -1.0]
       tcp_roll_rad: 0
       max_step_m: 0.005
@@ -609,7 +350,7 @@ sequences:
     - name: Stage_1_Module_2_Upper
       type: cartesian
       cartesian_mode: linear
-      target_xyz: [0.05, -0.366, 0.20]
+      target_xyz: [0.05, -0.366, 0.10]
       lookat_vector: [0.0, 0.0, -1.0]
       tcp_roll_rad: 0
       max_step_m: 0.005
@@ -625,19 +366,28 @@ sequences:
       acceleration_scaling: 0.2
       delay_after_sec: 2.0
 
-    # YOLO from Stage_1_Module_2_Upper — Cartesian optical center, then approach.
     - name: Module_2_Visual_Center_YOLO
       type: yolo_visual_center
       target_class: Box_1
-      lookat_vector: [0.0, 0.0, -1.0]
-      tcp_roll_rad: 1.570796326794896
-      yolo_visual_center_restore_pick_orientation_before_approach: false
+      yolo_visual_center_centering_mode: moveit_one_shot
       avoid_collisions: true
       velocity_scaling: 0.12
       acceleration_scaling: 0.12
       max_step_m: 0.005
       min_fraction: 0.85
       delay_after_sec: 0.3
+      
+      
+    - name: FoundationPose_And_GraspPrep
+      type: foundation_pose
+      target_class: Box_1
+      yolo_exclusive_scene_classes: [Box_1]
+      include_grasp_prep_orientation: true
+      lookat_vector: [0.0, 0.0, -1.0]
+      tcp_roll_rad: 0.0
+      velocity_scaling: 0.12
+      acceleration_scaling: 0.12
+      delay_after_sec: 0.2
 
     - name: Detach_Module_2_Tips_To_World
       type: trigger
@@ -646,161 +396,60 @@ sequences:
       call_timeout_sec: 15.0
       delay_after_sec: 0.2
 
-  
-  scan_and_approach:
-    - name: home_ready
+  Cylinder_1:
+    - name: Look
       type: joint
-      target: [0.0, -1.57, 1.57, -1.57, -1.57, 0.0]
-      velocity_scaling: 0.2
-      acceleration_scaling: 0.2
-      delay_after_sec: 1.0
+      target: [-1.186824, -2.338741, 2.042035, -1.850049, -1.500983, -3.159046]
+      velocity_scaling: 0.25
+      acceleration_scaling: 0.25
+      delay_after_sec: 0.3
 
-    - name: approach_tcp
-      type: cartesian
-      cartesian_mode: moveit
-      target_xyz: [0.30, -0.30, 0.10]
-      lookat_vector: [0.0, 0.0, -1.0]
-      tcp_roll_rad: 1.5708
-      velocity_scaling: 0.15
-      acceleration_scaling: 0.15
-      delay_after_sec: 0.5
-
-    # Direct straight TCP path. Use only in clear space; this bypasses full OMPL route planning.
-    - name: linear_demo
-      type: cartesian
-      cartesian_mode: linear
-      target_xyz: [0.30, -0.25, 0.10]
-      lookat_vector: [0.0, 0.0, -1.0]
-      tcp_roll_rad: 1.5708
+    - name: Visual_Center_YOLO
+      type: yolo_visual_center
+      target_class: Cylinder_1
+      velocity_scaling: 0.12
+      acceleration_scaling: 0.12
       max_step_m: 0.005
-      min_fraction: 0.95
-      velocity_scaling: 0.05
-      acceleration_scaling: 0.05
-      delay_after_sec: 0.5
+      min_fraction: 0.85
+      delay_after_sec: 0.2
+      
+    - name: FoundationPose_And_GraspPrep
+      type: foundation_pose
+      target_class: Cylinder_1
+      yolo_exclusive_scene_classes: [Cylinder_1]
+      include_grasp_prep_orientation: true
+      lookat_vector: [0.0, 0.0, -1.0]
+      tcp_roll_rad: 0.0
+      velocity_scaling: 0.12
+      acceleration_scaling: 0.12
+      delay_after_sec: 0.2
 
-    - name: smooth_scan_path
-      type: waypoint
-      waypoints:
-        - target_xyz: [0.30, -0.30, 0.10]
-          lookat_vector: [0.0, 0.0, -1.0]
-          tcp_roll_rad: 1.5708
-        - target_xyz: [0.30, -0.25, 0.10]
-          lookat_vector: [0.0, 0.0, -1.0]
-          tcp_roll_rad: 1.5708
-        - target_xyz: [0.30, -0.35, 0.10]
-          lookat_vector: [0.0, 0.0, -1.0]
-          tcp_roll_rad: 1.5708
-      blending_radius: 0.02
-      velocity_scaling: 0.1
-      acceleration_scaling: 0.1
-
-  mixed_waypoint_demo:
-    - name: mixed_joint_and_tcp_path
-      type: waypoint
-      blending_radius: 0.02
-      velocity_scaling: 0.1
-      acceleration_scaling: 0.1
-      waypoints:
-        # Joint waypoint: fastest/stablest for known safe robot postures.
-        - name: home_ready
-          type: joint
-          target: [0.0, -1.57, 1.57, -1.57, -1.57, 0.0]
-
-        # Cartesian waypoint: TCP target solved through MoveIt IK.
-        - name: scan_tcp
-          type: cartesian
-          target_xyz: [0.30, -0.30, 0.20]
-          lookat_vector: [0.0, 0.0, -1.0]
-          tcp_roll_rad: 0.0
-
-        - name: approach_tcp
-          type: cartesian
-          target_xyz: [0.30, -0.25, 0.15]
-          lookat_vector: [0.0, 0.0, -1.0]
-          tcp_roll_rad: 0.0
-          
-    - name: Stage_approach
+  # Test path: includes FoundationPose bridge trigger + Isaac TF wait + TCP look-down prep.
+  Cylinder_2:
+    - name: Look
       type: joint
-      target: [-1.570796326794896, -1.570796326794896, 1.570796326794896, -1.570796326794896, -1.570796326794896, -1.570796326794896]
-      velocity_scaling: 0.2
-      acceleration_scaling: 0.2
-      delay_after_sec: 0.0
+      target: [-1.186824, -2.338741, 2.042035, -1.850049, -1.500983, -3.159046]
+      velocity_scaling: 0.25
+      acceleration_scaling: 0.25
+      delay_after_sec: 0.3
 
-    - name: approach_tcp1
-      type: cartesian
-      cartesian_mode: moveit
-      target_xyz: [0.20, -0.30, 0.15]
-      lookat_vector: [0.0, 0.0, -1.0]
-      tcp_roll_rad: 0.0
-      velocity_scaling: 0.15
-      acceleration_scaling: 0.15
+    - name: Visual_Center_YOLO
+      type: yolo_visual_center
+      target_class: cylinder_2
+      velocity_scaling: 0.12
+      acceleration_scaling: 0.12
+      max_step_m: 0.005
+      min_fraction: 0.85
       delay_after_sec: 0.2
-    
-    - name: approach_tcp2
-      type: cartesian
-      cartesian_mode: moveit
-      target_xyz: [0.20, -0.30, 0.10]
-      lookat_vector: [0.0, 0.0, -1.0]
-      tcp_roll_rad: 0.0
-      velocity_scaling: 0.1
-      acceleration_scaling: 0.15
-      delay_after_sec: 0.2
-      
-    - name: approach_tcp3
-      type: cartesian
-      cartesian_mode: moveit
-      target_xyz: [0.20, -0.30, 0.15]
-      lookat_vector: [0.0, 0.0, -1.0]
-      tcp_roll_rad: 0.0
-      velocity_scaling: 0.15
-      acceleration_scaling: 0.15
-      delay_after_sec: 0.5
-      
-      
-      
-      
-      
-      
-    - name: Stage_approach
-      type: joint
-      target: [-1.570796326794896, -1.570796326794896, 1.570796326794896, -1.570796326794896, -1.570796326794896, -1.570796326794896]
-      velocity_scaling: 0.2
-      acceleration_scaling: 0.2
-      delay_after_sec: 0.0
 
-    - name: approach_tcp1
-      type: cartesian
-      cartesian_mode: moveit
-      target_xyz: [0.20, -0.30, 0.15]
+    - name: FoundationPose_And_GraspPrep
+      type: foundation_pose
+      target_class: cylinder_2
+      include_grasp_prep_orientation: true
       lookat_vector: [0.0, 0.0, -1.0]
       tcp_roll_rad: 0.0
-      velocity_scaling: 0.15
-      acceleration_scaling: 0.15
+      velocity_scaling: 0.12
+      acceleration_scaling: 0.12
+      max_step_m: 0.005
+      min_fraction: 0.85
       delay_after_sec: 0.2
-    
-    - name: approach_tcp2
-      type: cartesian
-      cartesian_mode: moveit
-      target_xyz: [0.20, -0.30, 0.10]
-      lookat_vector: [0.0, 0.0, -1.0]
-      tcp_roll_rad: 0.0
-      velocity_scaling: 0.1
-      acceleration_scaling: 0.15
-      delay_after_sec: 0.2
-      
-    - name: approach_tcp3
-      type: cartesian
-      cartesian_mode: moveit
-      target_xyz: [0.20, -0.30, 0.15]
-      lookat_vector: [0.0, 0.0, -1.0]
-      tcp_roll_rad: 0.0
-      velocity_scaling: 0.15
-      acceleration_scaling: 0.15
-      delay_after_sec: 0.5
-      
-      keepout_preset: module2_yolo_forbidden
-      planning_scene_settle_sec: 0.12
-      
-      attach_preset: Cylinder_1_module_1_attach_tool0
-      detach_preset: 
-      

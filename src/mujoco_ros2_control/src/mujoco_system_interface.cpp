@@ -36,6 +36,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include <tinyxml2.h>
 #include <hardware_interface/types/hardware_interface_type_values.hpp>
@@ -1530,45 +1531,81 @@ void MujocoSystemInterface::publish_object_transforms()
     return;
   }
 
-  const int bid_case = mj_name2id(mj_model_, mjOBJ_BODY, "Case_Base");
   const int bid_base = mj_name2id(mj_model_, mjOBJ_BODY, "ur3_base");
-  if (bid_case < 0 || bid_base < 0)
+  if (bid_base < 0)
   {
     return;
   }
 
+  struct MjBodyTf
+  {
+    const char* body_name;
+    const char* child_frame;
+  };
+  static const MjBodyTf k_bodies[] = {
+    {"Case_Base", "Case_Base"},
+    {"square_1_obj", "mujoco_square_1"},
+    {"cylinder_1_obj", "mujoco_cylinder_1"},
+    {"cylinder_2_obj", "mujoco_cylinder_2"},
+  };
+
   double sim_time = 0.0;
   Eigen::Matrix4d T_w_b;
-  Eigen::Matrix4d T_w_c;
+  struct BodyPoseEntry
+  {
+    const char* child_frame;
+    Eigen::Matrix4d T_w_body;
+  };
+  std::vector<BodyPoseEntry> body_poses;
+  body_poses.reserve(std::size(k_bodies));
 
   {
     const std::lock_guard<std::recursive_mutex> lock(*sim_mutex_);
     sim_time = mj_data_->time;
     T_w_b = mjBodyPoseWorld(mj_data_, bid_base);
-    T_w_c = mjBodyPoseWorld(mj_data_, bid_case);
+    for (const auto& entry : k_bodies)
+    {
+      const int bid = mj_name2id(mj_model_, mjOBJ_BODY, entry.body_name);
+      if (bid >= 0)
+      {
+        body_poses.push_back({entry.child_frame, mjBodyPoseWorld(mj_data_, bid)});
+      }
+    }
   }
 
-  const Eigen::Matrix4d T_b_c = T_w_b.inverse() * T_w_c;
-  const Eigen::Matrix3d R = T_b_c.block<3, 3>(0, 0);
-  const Eigen::Quaterniond q(R);
+  if (body_poses.empty())
+  {
+    return;
+  }
 
-  geometry_msgs::msg::TransformStamped t;
   int32_t sim_time_sec = static_cast<int32_t>(std::floor(sim_time));
-  uint32_t sim_time_nanosec = static_cast<uint32_t>((sim_time - static_cast<double>(sim_time_sec)) * 1e9);
-  t.header.stamp = rclcpp::Time(sim_time_sec, sim_time_nanosec, RCL_ROS_TIME);
-  // Matches robot_state_publisher root (world -> base_link with same MuJoCo alignment in ur3_mujoco_fixed.urdf.xacro).
-  t.header.frame_id = "base_link";
-  t.child_frame_id = "Case_Base";
+  uint32_t sim_time_nanosec =
+      static_cast<uint32_t>((sim_time - static_cast<double>(sim_time_sec)) * 1e9);
+  const rclcpp::Time stamp(sim_time_sec, sim_time_nanosec, RCL_ROS_TIME);
 
-  t.transform.translation.x = T_b_c(0, 3);
-  t.transform.translation.y = T_b_c(1, 3);
-  t.transform.translation.z = T_b_c(2, 3);
-  t.transform.rotation.x = q.x();
-  t.transform.rotation.y = q.y();
-  t.transform.rotation.z = q.z();
-  t.transform.rotation.w = q.w();
+  std::vector<geometry_msgs::msg::TransformStamped> transforms;
+  transforms.reserve(body_poses.size());
+  for (const auto& entry : body_poses)
+  {
+    const Eigen::Matrix4d T_b_o = T_w_b.inverse() * entry.T_w_body;
+    const Eigen::Matrix3d R = T_b_o.block<3, 3>(0, 0);
+    const Eigen::Quaterniond q(R);
 
-  tf_broadcaster_->sendTransform(t);
+    geometry_msgs::msg::TransformStamped t;
+    t.header.stamp = stamp;
+    t.header.frame_id = "base_link";
+    t.child_frame_id = entry.child_frame;
+    t.transform.translation.x = T_b_o(0, 3);
+    t.transform.translation.y = T_b_o(1, 3);
+    t.transform.translation.z = T_b_o(2, 3);
+    t.transform.rotation.x = q.x();
+    t.transform.rotation.y = q.y();
+    t.transform.rotation.z = q.z();
+    t.transform.rotation.w = q.w();
+    transforms.push_back(t);
+  }
+
+  tf_broadcaster_->sendTransform(transforms);
 }
 
 void MujocoSystemInterface::register_module_plate_weld_interfaces()

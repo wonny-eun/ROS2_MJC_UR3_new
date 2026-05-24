@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Add RealSense-like RGB/depth noise to live MuJoCo camera topics."""
 
+import array
+
 import numpy as np
 import rclpy
 from rclpy.node import Node
@@ -61,6 +63,12 @@ def _apply_depth_shadow(
 def _copy_header(src: Image, dst: Image) -> None:
     dst.header.stamp = src.header.stamp
     dst.header.frame_id = src.header.frame_id
+
+
+def _image_data_from_numpy_u8(arr: np.ndarray) -> array.array:
+    """ROS 2 Humble Image.data rejects raw bytes() in some builds; sequence of ints is safe."""
+    buf = np.ascontiguousarray(arr, dtype=np.uint8).ravel().tobytes()
+    return array.array("B", buf)
 
 
 class NoisyCameraNode(Node):
@@ -155,7 +163,7 @@ class NoisyCameraNode(Node):
         out.encoding = msg.encoding
         out.is_bigendian = msg.is_bigendian
         out.step = int(msg.width * 3)
-        out.data = out_arr.tobytes()
+        out.data = _image_data_from_numpy_u8(out_arr)
         self._rgb_pub.publish(out)
 
     def _on_depth(self, msg: Image) -> None:
@@ -203,7 +211,8 @@ class NoisyCameraNode(Node):
         out.encoding = "32FC1"
         out.is_bigendian = msg.is_bigendian
         out.step = int(msg.width * 4)
-        out.data = depth.tobytes()
+        dbuf = np.ascontiguousarray(depth, dtype=np.float32).ravel().tobytes()
+        out.data = array.array("B", dbuf)
         self._depth_pub.publish(out)
 
 
