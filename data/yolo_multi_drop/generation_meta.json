@@ -1,0 +1,107 @@
+{
+  "model": "/home/wonny/ur3_control/src/ROS2_MuJoCo_UR3/src/ur3_mujoco_sim/mjcf/ur3_scene_table.xml",
+  "n_total": 1500,
+  "splits": {
+    "train": 1350,
+    "val": 150
+  },
+  "object_geom_names": [
+    "cylinder_1_vis",
+    "cylinder_2_vis",
+    "square_1_vis"
+  ],
+  "class_names": [
+    "Cylinder_1",
+    "Cylinder_2",
+    "Box_1"
+  ],
+  "geom_to_class_name": {
+    "cylinder_1_vis": "Cylinder_1",
+    "cylinder_2_vis": "Cylinder_2",
+    "square_1_vis": "Box_1"
+  },
+  "noise_ranges": {
+    "rgb_noise_sigma_range": [
+      0.0,
+      3.0
+    ],
+    "rgb_salt_pepper_prob_range": [
+      0.0,
+      0.0001
+    ],
+    "rgb_brightness_jitter_range": [
+      0.0,
+      3.0
+    ],
+    "rgb_contrast_jitter_range": [
+      0.0,
+      0.1
+    ],
+    "depth_noise_sigma_m_range": [
+      0.0,
+      0.004
+    ],
+    "depth_quant_step_m_range": [
+      0.0005,
+      0.002
+    ],
+    "depth_dropout_prob_range": [
+      0.0,
+      0.04
+    ],
+    "depth_edge_dropout_prob_range": [
+      0.03,
+      0.18
+    ],
+    "depth_edge_threshold_m_range": [
+      0.006,
+      0.018
+    ],
+    "depth_shadow_enable": true,
+    "depth_shadow_direction": "left",
+    "depth_shadow_k_px_m_range": [
+      0.8,
+      5.0
+    ],
+    "depth_shadow_min_radius_px_range": [
+      1,
+      2
+    ],
+    "depth_shadow_max_radius_px_range": [
+      5,
+      10
+    ],
+    "depth_shadow_edge_threshold_m_range": [
+      0.01,
+      0.025
+    ],
+    "depth_shadow_max_depth_m_range": [
+      4.0,
+      4.0
+    ]
+  },
+  "seed": 0,
+  "camera": {
+    "min_dist_m": 0.1,
+    "sample_max_tries": 400,
+    "fixed_lookat": false,
+    "lookat_default_xyz": [
+      -0.36,
+      -0.28,
+      0.79
+    ],
+    "distance_range": [
+      0.35,
+      1.15
+    ],
+    "frame_placement": "mixed",
+    "frame_offcenter_frac": 0.55,
+    "frame_corner_frac": 0.45,
+    "lookat_offset_xy_m": 0.1
+  },
+  "settle": {
+    "time_s": 5.0,
+    "max_steps": 500000,
+    "timestep_s": 0.002
+  }
+}

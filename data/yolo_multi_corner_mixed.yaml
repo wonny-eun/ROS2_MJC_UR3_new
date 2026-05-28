@@ -1,0 +1,12 @@
+# Sim (yolo_multi_drop) + real (yolo_real_data after prepare_yolo_real_for_training.py).
+# Ultralytics resolves each path under ``path``; labels mirror ``images`` -> ``labels``.
+# If your repo is not at /home/wonny/ur3_control, change ``path`` to your ``.../ur3_control/data``.
+path: /home/wonny/ur3_control/data
+train:
+  - yolo_corner_fixed/images/train
+  - yolo_real_data/images/train
+val:
+  - yolo_corner_fixed/images/val
+  - yolo_real_data/images/val
+nc: 3
+names: ["Cylinder_1", "Cylinder_2", "Box_1"]

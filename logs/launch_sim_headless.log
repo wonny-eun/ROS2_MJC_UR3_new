@@ -1,0 +1,634 @@
+=== 2026-05-23T22:24:12+09:00 launch_sim_headless.sh ===
+Headless MuJoCo + MoveIt (no GUI). Log: /home/wonny/ur3_control/logs/launch_sim_headless.log
+[INFO] [launch]: All log files can be found below /home/wonny/.ros/log/2026-05-23-22-24-12-758676-wonny-21315
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [launch.user]: MuJoCo launch: headless=FALSE, enable_rviz default=FALSE. DISPLAY=:1 XAUTHORITY=/run/user/1001/gdm/Xauthority. Pass enable_rviz:=true for MoveIt RViz (may segfault on Ctrl+C if MuJoCo GUI is also open).
+[INFO] [robot_state_publisher-1]: process started with pid [21318]
+[INFO] [ros2_control_node-2]: process started with pid [21320]
+[INFO] [spawner-3]: process started with pid [21322]
+[INFO] [spawner-4]: process started with pid [21324]
+[INFO] [spawner-5]: process started with pid [21326]
+[INFO] [move_group-6]: process started with pid [21328]
+[INFO] [servo_node_main-7]: process started with pid [21330]
+[INFO] [virtual_perception_node-8]: process started with pid [21332]
+[INFO] [mujoco_object_manager_node-9]: process started with pid [21334]
+[INFO] [noisy_camera_node-10]: process started with pid [21336]
+[robot_state_publisher-1] [INFO] [1779542653.003521677] [robot_state_publisher]: got segment axis_base_link
+[robot_state_publisher-1] [INFO] [1779542653.003566293] [robot_state_publisher]: got segment axis_forearm_link
+[robot_state_publisher-1] [INFO] [1779542653.003569584] [robot_state_publisher]: got segment axis_gripper_tip
+[robot_state_publisher-1] [INFO] [1779542653.003571526] [robot_state_publisher]: got segment axis_shoulder_link
+[robot_state_publisher-1] [INFO] [1779542653.003573310] [robot_state_publisher]: got segment axis_tool0
+[robot_state_publisher-1] [INFO] [1779542653.003575067] [robot_state_publisher]: got segment axis_upper_arm_link
+[robot_state_publisher-1] [INFO] [1779542653.003576764] [robot_state_publisher]: got segment axis_wrist_1_link
+[robot_state_publisher-1] [INFO] [1779542653.003578437] [robot_state_publisher]: got segment axis_wrist_2_link
+[robot_state_publisher-1] [INFO] [1779542653.003579976] [robot_state_publisher]: got segment axis_wrist_3_link
+[robot_state_publisher-1] [INFO] [1779542653.003581540] [robot_state_publisher]: got segment base
+[robot_state_publisher-1] [INFO] [1779542653.003583225] [robot_state_publisher]: got segment base_link
+[robot_state_publisher-1] [INFO] [1779542653.003584839] [robot_state_publisher]: got segment base_link_inertia
+[robot_state_publisher-1] [INFO] [1779542653.003586446] [robot_state_publisher]: got segment camera_color_optical_frame
+[robot_state_publisher-1] [INFO] [1779542653.003588252] [robot_state_publisher]: got segment d435i_mount_link
+[robot_state_publisher-1] [INFO] [1779542653.003589879] [robot_state_publisher]: got segment flange
+[robot_state_publisher-1] [INFO] [1779542653.003591530] [robot_state_publisher]: got segment forearm_link
+[robot_state_publisher-1] [INFO] [1779542653.003593251] [robot_state_publisher]: got segment ft_frame
+[robot_state_publisher-1] [INFO] [1779542653.003594934] [robot_state_publisher]: got segment gripper_link
+[robot_state_publisher-1] [INFO] [1779542653.003596487] [robot_state_publisher]: got segment gripper_motor_dummy
+[robot_state_publisher-1] [INFO] [1779542653.003598278] [robot_state_publisher]: got segment gripper_tip
+[robot_state_publisher-1] [INFO] [1779542653.003599856] [robot_state_publisher]: got segment rl_camera_frame
+[robot_state_publisher-1] [INFO] [1779542653.003601529] [robot_state_publisher]: got segment shoulder_link
+[robot_state_publisher-1] [INFO] [1779542653.003603186] [robot_state_publisher]: got segment table
+[robot_state_publisher-1] [INFO] [1779542653.003604837] [robot_state_publisher]: got segment tool0
+[robot_state_publisher-1] [INFO] [1779542653.003606460] [robot_state_publisher]: got segment upper_arm_link
+[robot_state_publisher-1] [INFO] [1779542653.003608081] [robot_state_publisher]: got segment world
+[robot_state_publisher-1] [INFO] [1779542653.003609642] [robot_state_publisher]: got segment wrist_1_link
+[robot_state_publisher-1] [INFO] [1779542653.003611234] [robot_state_publisher]: got segment wrist_2_link
+[robot_state_publisher-1] [INFO] [1779542653.003612780] [robot_state_publisher]: got segment wrist_3_link
+[ros2_control_node-2] [WARN] [1779542653.019108169] [controller_manager]: [Deprecated] Passing the robot description parameter directly to the control_manager node is deprecated. Use '~/robot_description' topic from 'robot_state_publisher' instead.
+[ros2_control_node-2] [INFO] [1779542653.019437006] [resource_manager]: Loading hardware 'MujocoSystem' 
+[ros2_control_node-2] [INFO] [1779542653.022703083] [resource_manager]: Initialize hardware 'MujocoSystem' 
+[ros2_control_node-2] [INFO] [1779542653.022749830] [MujocoSystemInterface]: Loading 'mujoco_model' from: /home/wonny/ur3_control/src/ROS2_MuJoCo_UR3/install/ur3_mujoco_sim/share/ur3_mujoco_sim/mjcf/ur3_scene_randomized_21315.xml
+[ros2_control_node-2] [INFO] [1779542653.022766681] [MujocoSystemInterface]: Running the simulation at 100 percent speed
+[ros2_control_node-2] [INFO] [1779542653.022773316] [MujocoSystemInterface]: Running in HEADLESS mode.
+[servo_node_main-7] [WARN] [1779542653.028730918] [moveit_servo.servo_node]: Intra-process communication is disabled, consider enabling it by adding: 
+[servo_node_main-7] extra_arguments=[{'use_intra_process_comms' : True}]
+[servo_node_main-7] to the Servo composable node in the launch file
+[move_group-6] [WARN] [1779542653.030571916] [move_group.move_group]: Falling back to using the the move_group node namespace (deprecated behavior).
+[move_group-6] [INFO] [1779542653.033326275] [moveit_rdf_loader.rdf_loader]: Loaded robot model in 0 seconds
+[move_group-6] [INFO] [1779542653.033350731] [moveit_robot_model.robot_model]: Loading robot model 'ur'...
+[move_group-6] [INFO] [1779542653.033357511] [moveit_robot_model.robot_model]: No root/virtual joint specified in SRDF. Assuming fixed joint
+[move_group-6] [WARN] [1779542653.033380835] [moveit_robot_model.robot_model]: Link axis_base_link has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[servo_node_main-7] [INFO] [1779542653.034707290] [moveit_rdf_loader.rdf_loader]: Loaded robot model in 0 seconds
+[servo_node_main-7] [INFO] [1779542653.034730607] [moveit_robot_model.robot_model]: Loading robot model 'ur'...
+[servo_node_main-7] [INFO] [1779542653.034736620] [moveit_robot_model.robot_model]: No root/virtual joint specified in SRDF. Assuming fixed joint
+[servo_node_main-7] [WARN] [1779542653.034757746] [moveit_robot_model.robot_model]: Link axis_base_link has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[servo_node_main-7] [WARN] [1779542653.051487386] [moveit_robot_model.robot_model]: Link axis_shoulder_link has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[move_group-6] [WARN] [1779542653.052442328] [moveit_robot_model.robot_model]: Link axis_shoulder_link has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[servo_node_main-7] [WARN] [1779542653.061549436] [moveit_robot_model.robot_model]: Link axis_upper_arm_link has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[move_group-6] [WARN] [1779542653.062655991] [moveit_robot_model.robot_model]: Link axis_upper_arm_link has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[servo_node_main-7] [WARN] [1779542653.066507591] [moveit_robot_model.robot_model]: Link axis_forearm_link has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[servo_node_main-7] [WARN] [1779542653.069864351] [moveit_robot_model.robot_model]: Link axis_wrist_1_link has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[move_group-6] [WARN] [1779542653.070153956] [moveit_robot_model.robot_model]: Link axis_forearm_link has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[servo_node_main-7] [WARN] [1779542653.073317616] [moveit_robot_model.robot_model]: Link axis_wrist_2_link has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[servo_node_main-7] [WARN] [1779542653.074086115] [moveit_robot_model.robot_model]: Link axis_wrist_3_link has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[servo_node_main-7] [WARN] [1779542653.074304373] [moveit_robot_model.robot_model]: Link axis_tool0 has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[move_group-6] [WARN] [1779542653.076571962] [moveit_robot_model.robot_model]: Link axis_wrist_1_link has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[move_group-6] [WARN] [1779542653.083797151] [moveit_robot_model.robot_model]: Link axis_wrist_2_link has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[move_group-6] [WARN] [1779542653.084351529] [moveit_robot_model.robot_model]: Link axis_wrist_3_link has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[move_group-6] [WARN] [1779542653.084363537] [moveit_robot_model.robot_model]: Link axis_tool0 has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[noisy_camera_node-10] [INFO] [1779542653.280994533] [noisy_camera_node]: Noisy RGB: /rl_camera/color -> /rl_camera/noisy/color, sigma=1.0, salt_pepper=1e-05, brightness_jitter=0.1, contrast_jitter=0.01
+[noisy_camera_node-10] [INFO] [1779542653.281170582] [noisy_camera_node]: Noisy depth: /rl_camera/depth -> /rl_camera/noisy/depth, sigma=0.0005m, quant=0.005m, dropout=0.0001, edge_dropout=0.0001, shadow=True, shadow_direction=left, shadow_k=4.0, shadow_max_depth=4.0m
+[mujoco_object_manager_node-9] [INFO] [1779542653.295202845] [mujoco_object_manager_node]: Mujoco object manager ready. Listening on /target_pose
+[spawner-3] [INFO] [1779542653.307768990] [spawner_joint_state_broadcaster]: waiting for service /controller_manager/list_controllers to become available...
+[spawner-5] [INFO] [1779542653.313350714] [spawner_gripper_motor_position_controller]: waiting for service /controller_manager/list_controllers to become available...
+[spawner-4] [INFO] [1779542653.320530243] [spawner_joint_trajectory_controller]: waiting for service /controller_manager/list_controllers to become available...
+[servo_node_main-7] [WARN] [1779542653.339544787] [moveit_robot_model.robot_model]: Link axis_gripper_tip has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[virtual_perception_node-8] [INFO] [1779542653.362041076] [virtual_perception_node]: Virtual perception TF publisher started.
+[servo_node_main-7] [WARN] [1779542653.404817696] [moveit_ros.robot_model_loader]: No kinematics plugins defined. Fill and load kinematics.yaml!
+[move_group-6] [WARN] [1779542653.423084615] [moveit_robot_model.robot_model]: Link axis_gripper_tip has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[servo_node_main-7] [INFO] [1779542653.905065295] [moveit_ros.current_state_monitor]: Listening to joint states on topic '/joint_states'
+[servo_node_main-7] [INFO] [1779542653.906726335] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to '/attached_collision_object' for attached collision objects
+[servo_node_main-7] [INFO] [1779542653.906735654] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Starting planning scene monitor
+[servo_node_main-7] [INFO] [1779542653.907134816] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to '/planning_scene'
+[servo_node_main-7] [INFO] [1779542653.907141197] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Starting world geometry update monitor for collision objects, attached objects, octomap updates.
+[servo_node_main-7] [INFO] [1779542653.907242923] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to 'collision_object'
+[servo_node_main-7] [INFO] [1779542653.907327527] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to 'planning_scene_world' for planning scene world geometry
+[servo_node_main-7] [WARN] [1779542653.907422979] [moveit.ros.occupancy_map_monitor.middleware_handle]: Resolution not specified for Octomap. Assuming resolution = 0.1 instead
+[servo_node_main-7] [ERROR] [1779542653.907428075] [moveit.ros.occupancy_map_monitor.middleware_handle]: No 3D sensor plugin(s) defined for octomap updates
+[move_group-6] [INFO] [1779542654.006614283] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Publishing maintained planning scene on 'monitored_planning_scene'
+[move_group-6] [INFO] [1779542654.006689401] [moveit.ros_planning_interface.moveit_cpp]: Listening to 'joint_states' for joint states
+[move_group-6] [INFO] [1779542654.006996561] [moveit_ros.current_state_monitor]: Listening to joint states on topic 'joint_states'
+[move_group-6] [INFO] [1779542654.007126086] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to '/attached_collision_object' for attached collision objects
+[move_group-6] [INFO] [1779542654.007132036] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Starting planning scene monitor
+[move_group-6] [INFO] [1779542654.007205001] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to '/planning_scene'
+[move_group-6] [INFO] [1779542654.007209082] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Starting world geometry update monitor for collision objects, attached objects, octomap updates.
+[move_group-6] [INFO] [1779542654.007285382] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to 'collision_object'
+[move_group-6] [INFO] [1779542654.007359370] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to 'planning_scene_world' for planning scene world geometry
+[move_group-6] [WARN] [1779542654.007454773] [moveit.ros.occupancy_map_monitor.middleware_handle]: Resolution not specified for Octomap. Assuming resolution = 0.1 instead
+[move_group-6] [ERROR] [1779542654.007459259] [moveit.ros.occupancy_map_monitor.middleware_handle]: No 3D sensor plugin(s) defined for octomap updates
+[ros2_control_node-2] [INFO] [1779542654.355254348] [MujocoSystemInterface]: override_start_position_file not passed. Loading initial positions from ros2_control xacro.
+[ros2_control_node-2] [INFO] [1779542654.358383852] [MujocoSystemInterface]: Module_1_Plate: subscribe /mujoco/weld/module_1_plate_case_offset; services /mujoco/weld/module_1_plate_reset_table_hold (snap to table), /mujoco/weld/module_1_plate_attach_case_base (snap to gripper), /mujoco/weld/module_2_tips_attach_fingers, /mujoco/weld/module_2_tips_detach_world (switch both tips if available). Use same ROS_DOMAIN_ID in all terminals.
+[ros2_control_node-2] [INFO] [1779542654.358391968] [MujocoSystemInterface]: Initializing cameras...
+[ros2_control_node-2] [INFO] [1779542654.358400563] [mujoco_node]: Adding camera: rl_camera
+[ros2_control_node-2] [INFO] [1779542654.358407925] [mujoco_node]:     frame_name: rl_camera_frame
+[ros2_control_node-2] [INFO] [1779542654.358410144] [mujoco_node]:     info_topic: rl_camera/camera_info
+[ros2_control_node-2] [INFO] [1779542654.358412411] [mujoco_node]:     image_topic: rl_camera/color
+[ros2_control_node-2] [INFO] [1779542654.358414378] [mujoco_node]:     depth_topic: rl_camera/depth
+[ros2_control_node-2] [INFO] [1779542654.361215021] [MujocoSystemInterface]: Initializing lidar...
+[ros2_control_node-2] [INFO] [1779542654.361254594] [resource_manager]: Successful initialization of hardware 'MujocoSystem'
+[ros2_control_node-2] [INFO] [1779542654.361269482] [MujocoSystemInterface]: Starting the mujoco physics thread...
+[ros2_control_node-2] [INFO] [1779542654.361288590] [resource_manager]: 'configure' hardware 'MujocoSystem' 
+[ros2_control_node-2] [INFO] [1779542654.361292494] [resource_manager]: Successful 'configure' of hardware 'MujocoSystem'
+[ros2_control_node-2] [INFO] [1779542654.361295363] [resource_manager]: 'activate' hardware 'MujocoSystem' 
+[ros2_control_node-2] [INFO] [1779542654.361297079] [MujocoSystemInterface]: Activating MuJoCo hardware interface and starting Simulate threads...
+[ros2_control_node-2] [INFO] [1779542654.365814937] [resource_manager]: Successful 'activate' of hardware 'MujocoSystem'
+[ros2_control_node-2] [INFO] [1779542654.365848356] [mujoco_node]: Starting the lidar processing loop, publishing at 5 Hz
+[ros2_control_node-2] [INFO] [1779542654.378559379] [controller_manager]: update rate is 125 Hz
+[ros2_control_node-2] [INFO] [1779542654.378585149] [controller_manager]: Spawning controller_manager RT thread with scheduler priority: 50
+[ros2_control_node-2] [WARN] [1779542654.378650555] [controller_manager]: Could not enable FIFO RT scheduling policy: with error number <1>(Operation not permitted). See [https://control.ros.org/master/doc/ros2_control/controller_manager/doc/userdoc.html] for details on how to enable realtime scheduling.
+[ros2_control_node-2] [INFO] [1779542654.560095652] [controller_manager]: Loading controller 'joint_state_broadcaster'
+[spawner-3] [INFO] [1779542654.570208425] [spawner_joint_state_broadcaster]: [94mLoaded [1mjoint_state_broadcaster[0m
+[ros2_control_node-2] [INFO] [1779542654.570264623] [controller_manager]: Loading controller 'gripper_motor_position_controller'
+[ros2_control_node-2] [INFO] [1779542654.577476296] [controller_manager]: Configuring controller 'joint_state_broadcaster'
+[ros2_control_node-2] [INFO] [1779542654.577550772] [joint_state_broadcaster]: 'joints' or 'interfaces' parameter is empty. All available state interfaces will be published
+[spawner-5] [INFO] [1779542654.577735050] [spawner_gripper_motor_position_controller]: [94mLoaded [1mgripper_motor_position_controller[0m
+[ros2_control_node-2] [INFO] [1779542654.584875521] [mujoco_node]: Initializing rendering for cameras
+[ros2_control_node-2] [INFO] [1779542654.585427680] [controller_manager]: Loading controller 'joint_trajectory_controller'
+[ros2_control_node-2] [WARN] [1779542654.593135049] [joint_trajectory_controller]: [Deprecated]: "allow_nonzero_velocity_at_trajectory_end" is set to true. The default behavior will change to false.
+[ros2_control_node-2] [INFO] [1779542654.593495204] [controller_manager]: Configuring controller 'gripper_motor_position_controller'
+[ros2_control_node-2] [INFO] [1779542654.594072492] [gripper_motor_position_controller]: configure successful
+[spawner-4] [INFO] [1779542654.594100959] [spawner_joint_trajectory_controller]: [94mLoaded [1mjoint_trajectory_controller[0m
+[ros2_control_node-2] [INFO] [1779542654.601340804] [controller_manager]: Configuring controller 'joint_trajectory_controller'
+[ros2_control_node-2] [INFO] [1779542654.601507396] [joint_trajectory_controller]: No specific joint names are used for command interfaces. Using 'joints' parameter.
+[ros2_control_node-2] [INFO] [1779542654.601527682] [joint_trajectory_controller]: Command interfaces are [position] and state interfaces are [position velocity].
+[ros2_control_node-2] [INFO] [1779542654.601546473] [joint_trajectory_controller]: Using 'splines' interpolation method.
+[ros2_control_node-2] [INFO] [1779542654.602217257] [joint_trajectory_controller]: Controller state will be published at 50.00 Hz.
+[ros2_control_node-2] [INFO] [1779542654.603421950] [joint_trajectory_controller]: Action status changes will be monitored at 20.00 Hz.
+[spawner-3] [INFO] [1779542654.625693402] [spawner_joint_state_broadcaster]: [92mConfigured and activated [1mjoint_state_broadcaster[0m
+[ros2_control_node-2] [INFO] [1779542654.632988736] [MujocoSystemInterface]: Joint gripper_motor_joint: position control enabled (velocity, effort disabled)
+[ros2_control_node-2] [INFO] [1779542654.633050556] [gripper_motor_position_controller]: activate successful
+[spawner-5] [INFO] [1779542654.641436509] [spawner_gripper_motor_position_controller]: [92mConfigured and activated [1mgripper_motor_position_controller[0m
+[ros2_control_node-2] [INFO] [1779542654.648909926] [MujocoSystemInterface]: Joint shoulder_pan_joint: position control enabled (velocity, effort disabled)
+[ros2_control_node-2] [INFO] [1779542654.648932585] [MujocoSystemInterface]: Joint shoulder_lift_joint: position control enabled (velocity, effort disabled)
+[ros2_control_node-2] [INFO] [1779542654.648936289] [MujocoSystemInterface]: Joint elbow_joint: position control enabled (velocity, effort disabled)
+[ros2_control_node-2] [INFO] [1779542654.648939347] [MujocoSystemInterface]: Joint wrist_1_joint: position control enabled (velocity, effort disabled)
+[ros2_control_node-2] [INFO] [1779542654.648942227] [MujocoSystemInterface]: Joint wrist_2_joint: position control enabled (velocity, effort disabled)
+[ros2_control_node-2] [INFO] [1779542654.648944920] [MujocoSystemInterface]: Joint wrist_3_joint: position control enabled (velocity, effort disabled)
+[spawner-4] [INFO] [1779542654.657346934] [spawner_joint_trajectory_controller]: [92mConfigured and activated [1mjoint_trajectory_controller[0m
+[ros2_control_node-2] [INFO] [1779542654.694992691] [mujoco_node]: Starting the camera rendering loop, publishing at 30.000000 Hz
+[ros2_control_node-2] [INFO] [1779542654.695025200] [mujoco_node]: Resized offscreen buffer to 640 x 480
+[INFO] [spawner-3]: process has finished cleanly [pid 21322]
+[INFO] [spawner-5]: process has finished cleanly [pid 21326]
+[INFO] [spawner-4]: process has finished cleanly [pid 21324]
+[servo_node_main-7] [INFO] [1779542655.832046031] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Publishing maintained planning scene on '/servo_node/publish_planning_scene'
+[move_group-6] [INFO] [1779542655.913657441] [moveit.ros_planning_interface.moveit_cpp]: Loading planning pipeline 'move_group'
+[move_group-6] [INFO] [1779542655.918374596] [moveit.ros_planning.planning_pipeline]: Using planning interface 'OMPL'
+[move_group-6] [INFO] [1779542655.919315336] [moveit_ros.add_time_optimal_parameterization]: Param 'move_group.path_tolerance' was not set. Using default value: 0.100000
+[move_group-6] [INFO] [1779542655.919321378] [moveit_ros.add_time_optimal_parameterization]: Param 'move_group.resample_dt' was not set. Using default value: 0.100000
+[move_group-6] [INFO] [1779542655.919323268] [moveit_ros.add_time_optimal_parameterization]: Param 'move_group.min_angle_change' was not set. Using default value: 0.001000
+[move_group-6] [INFO] [1779542655.919328629] [moveit_ros.fix_workspace_bounds]: Param 'move_group.default_workspace_bounds' was not set. Using default value: 10.000000
+[move_group-6] [INFO] [1779542655.919334487] [moveit_ros.fix_start_state_bounds]: Param 'move_group.start_state_max_bounds_error' was set to 0.100000
+[move_group-6] [INFO] [1779542655.919336244] [moveit_ros.fix_start_state_bounds]: Param 'move_group.start_state_max_dt' was not set. Using default value: 0.500000
+[move_group-6] [INFO] [1779542655.919340735] [moveit_ros.fix_start_state_collision]: Param 'move_group.start_state_max_dt' was not set. Using default value: 0.500000
+[move_group-6] [INFO] [1779542655.919342526] [moveit_ros.fix_start_state_collision]: Param 'move_group.jiggle_fraction' was not set. Using default value: 0.020000
+[move_group-6] [INFO] [1779542655.919344360] [moveit_ros.fix_start_state_collision]: Param 'move_group.max_sampling_attempts' was not set. Using default value: 100
+[move_group-6] [INFO] [1779542655.919348566] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Add Time Optimal Parameterization'
+[move_group-6] [INFO] [1779542655.919350266] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Fix Workspace Bounds'
+[move_group-6] [INFO] [1779542655.919351515] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Fix Start State Bounds'
+[move_group-6] [INFO] [1779542655.919352621] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Fix Start State In Collision'
+[move_group-6] [INFO] [1779542655.919353725] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Fix Start State Path Constraints'
+[move_group-6] [INFO] [1779542655.925508791] [moveit.plugins.moveit_simple_controller_manager]: Added FollowJointTrajectory controller for scaled_joint_trajectory_controller
+[move_group-6] [INFO] [1779542655.925980049] [moveit.plugins.moveit_simple_controller_manager]: Added FollowJointTrajectory controller for joint_trajectory_controller
+[move_group-6] [INFO] [1779542655.926041155] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779542655.926050506] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779542655.926243772] [moveit_ros.trajectory_execution_manager]: Trajectory execution is not managing controllers
+[move_group-6] [INFO] [1779542655.926249729] [move_group.move_group]: MoveGroup debug mode is ON
+[move_group-6] [INFO] [1779542655.930495268] [move_group.move_group]: 
+[move_group-6] 
+[move_group-6] ********************************************************
+[move_group-6] * MoveGroup using: 
+[move_group-6] *     - ApplyPlanningSceneService
+[move_group-6] *     - ClearOctomapService
+[move_group-6] *     - CartesianPathService
+[move_group-6] *     - ExecuteTrajectoryAction
+[move_group-6] *     - GetPlanningSceneService
+[move_group-6] *     - KinematicsService
+[move_group-6] *     - MoveAction
+[move_group-6] *     - MotionPlanService
+[move_group-6] *     - QueryPlannersService
+[move_group-6] *     - StateValidationService
+[move_group-6] ********************************************************
+[move_group-6] 
+[move_group-6] [INFO] [1779542655.930531245] [moveit_move_group_capabilities_base.move_group_context]: MoveGroup context using planning plugin ompl_interface/OMPLPlanner
+[move_group-6] [INFO] [1779542655.930540778] [moveit_move_group_capabilities_base.move_group_context]: MoveGroup context initialization complete
+[move_group-6] [96mLoading 'move_group/ApplyPlanningSceneService'...
+[move_group-6] [0m[96mLoading 'move_group/ClearOctomapService'...
+[move_group-6] [0m[96mLoading 'move_group/MoveGroupCartesianPathService'...
+[move_group-6] [0m[96mLoading 'move_group/MoveGroupExecuteTrajectoryAction'...
+[move_group-6] [0m[96mLoading 'move_group/MoveGroupGetPlanningSceneService'...
+[move_group-6] [0m[96mLoading 'move_group/MoveGroupKinematicsService'...
+[move_group-6] [0m[96mLoading 'move_group/MoveGroupMoveAction'...
+[move_group-6] [0m[96mLoading 'move_group/MoveGroupPlanService'...
+[move_group-6] [0m[96mLoading 'move_group/MoveGroupQueryPlannersService'...
+[move_group-6] [0m[96mLoading 'move_group/MoveGroupStateValidationService'...
+[move_group-6] [0m[92m
+[move_group-6] You can start planning now!
+[move_group-6] 
+[servo_node_main-7] [WARN] [1779542655.932208051] [moveit_servo.servo_calcs]: No kinematics solver instantiated for group 'ur_manipulator'. Will use inverse Jacobian for servo calculations instead.
+=== 2026-05-27T14:49:49+09:00 launch_sim_headless.sh ===
+Headless MuJoCo + MoveIt (no GUI). Log: /home/wonny/ur3_control/logs/launch_sim_headless.log
+[INFO] [launch]: All log files can be found below /home/wonny/.ros/log/2026-05-27-14-49-49-926576-wonny-87603
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [launch.user]: MuJoCo launch: headless=FALSE, enable_rviz default=FALSE. DISPLAY=:1 XAUTHORITY=/run/user/1001/gdm/Xauthority. Pass enable_rviz:=true for MoveIt RViz (may segfault on Ctrl+C if MuJoCo GUI is also open).
+[INFO] [robot_state_publisher-1]: process started with pid [87606]
+[INFO] [ros2_control_node-2]: process started with pid [87608]
+[INFO] [spawner-3]: process started with pid [87610]
+[INFO] [spawner-4]: process started with pid [87612]
+[INFO] [spawner-5]: process started with pid [87614]
+[INFO] [move_group-6]: process started with pid [87616]
+[INFO] [servo_node_main-7]: process started with pid [87618]
+[INFO] [virtual_perception_node-8]: process started with pid [87620]
+[INFO] [mujoco_object_manager_node-9]: process started with pid [87622]
+[INFO] [noisy_camera_node-10]: process started with pid [87624]
+[robot_state_publisher-1] [INFO] [1779860990.175210495] [robot_state_publisher]: got segment axis_base_link
+[robot_state_publisher-1] [INFO] [1779860990.175270296] [robot_state_publisher]: got segment axis_forearm_link
+[robot_state_publisher-1] [INFO] [1779860990.175274957] [robot_state_publisher]: got segment axis_gripper_tip
+[robot_state_publisher-1] [INFO] [1779860990.175277912] [robot_state_publisher]: got segment axis_shoulder_link
+[robot_state_publisher-1] [INFO] [1779860990.175280627] [robot_state_publisher]: got segment axis_tool0
+[robot_state_publisher-1] [INFO] [1779860990.175283311] [robot_state_publisher]: got segment axis_upper_arm_link
+[robot_state_publisher-1] [INFO] [1779860990.175286040] [robot_state_publisher]: got segment axis_wrist_1_link
+[robot_state_publisher-1] [INFO] [1779860990.175288734] [robot_state_publisher]: got segment axis_wrist_2_link
+[robot_state_publisher-1] [INFO] [1779860990.175291340] [robot_state_publisher]: got segment axis_wrist_3_link
+[robot_state_publisher-1] [INFO] [1779860990.175294036] [robot_state_publisher]: got segment base
+[robot_state_publisher-1] [INFO] [1779860990.175296897] [robot_state_publisher]: got segment base_link
+[robot_state_publisher-1] [INFO] [1779860990.175299721] [robot_state_publisher]: got segment base_link_inertia
+[robot_state_publisher-1] [INFO] [1779860990.175302422] [robot_state_publisher]: got segment camera_color_optical_frame
+[robot_state_publisher-1] [INFO] [1779860990.175305241] [robot_state_publisher]: got segment d435i_mount_link
+[robot_state_publisher-1] [INFO] [1779860990.175308004] [robot_state_publisher]: got segment flange
+[robot_state_publisher-1] [INFO] [1779860990.175310741] [robot_state_publisher]: got segment forearm_link
+[robot_state_publisher-1] [INFO] [1779860990.175313488] [robot_state_publisher]: got segment ft_frame
+[robot_state_publisher-1] [INFO] [1779860990.175316112] [robot_state_publisher]: got segment gripper_link
+[robot_state_publisher-1] [INFO] [1779860990.175318937] [robot_state_publisher]: got segment gripper_motor_dummy
+[robot_state_publisher-1] [INFO] [1779860990.175321689] [robot_state_publisher]: got segment gripper_tip
+[robot_state_publisher-1] [INFO] [1779860990.175324452] [robot_state_publisher]: got segment rl_camera_frame
+[robot_state_publisher-1] [INFO] [1779860990.175327205] [robot_state_publisher]: got segment shoulder_link
+[robot_state_publisher-1] [INFO] [1779860990.175330159] [robot_state_publisher]: got segment table
+[robot_state_publisher-1] [INFO] [1779860990.175332881] [robot_state_publisher]: got segment tool0
+[robot_state_publisher-1] [INFO] [1779860990.175335562] [robot_state_publisher]: got segment upper_arm_link
+[robot_state_publisher-1] [INFO] [1779860990.175338407] [robot_state_publisher]: got segment world
+[robot_state_publisher-1] [INFO] [1779860990.175341117] [robot_state_publisher]: got segment wrist_1_link
+[robot_state_publisher-1] [INFO] [1779860990.175343950] [robot_state_publisher]: got segment wrist_2_link
+[robot_state_publisher-1] [INFO] [1779860990.175346577] [robot_state_publisher]: got segment wrist_3_link
+[servo_node_main-7] [WARN] [1779860990.192313355] [moveit_servo.servo_node]: Intra-process communication is disabled, consider enabling it by adding: 
+[servo_node_main-7] extra_arguments=[{'use_intra_process_comms' : True}]
+[servo_node_main-7] to the Servo composable node in the launch file
+[servo_node_main-7] [INFO] [1779860990.196801987] [moveit_rdf_loader.rdf_loader]: Loaded robot model in 0 seconds
+[servo_node_main-7] [INFO] [1779860990.196826233] [moveit_robot_model.robot_model]: Loading robot model 'ur'...
+[servo_node_main-7] [INFO] [1779860990.196830440] [moveit_robot_model.robot_model]: No root/virtual joint specified in SRDF. Assuming fixed joint
+[servo_node_main-7] [WARN] [1779860990.196849126] [moveit_robot_model.robot_model]: Link axis_base_link has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[move_group-6] [WARN] [1779860990.198320927] [move_group.move_group]: Falling back to using the the move_group node namespace (deprecated behavior).
+[move_group-6] [INFO] [1779860990.200477296] [moveit_rdf_loader.rdf_loader]: Loaded robot model in 0 seconds
+[move_group-6] [INFO] [1779860990.200779799] [moveit_robot_model.robot_model]: Loading robot model 'ur'...
+[move_group-6] [INFO] [1779860990.200941950] [moveit_robot_model.robot_model]: No root/virtual joint specified in SRDF. Assuming fixed joint
+[move_group-6] [WARN] [1779860990.201432622] [moveit_robot_model.robot_model]: Link axis_base_link has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[ros2_control_node-2] [WARN] [1779860990.203802778] [controller_manager]: [Deprecated] Passing the robot description parameter directly to the control_manager node is deprecated. Use '~/robot_description' topic from 'robot_state_publisher' instead.
+[ros2_control_node-2] [INFO] [1779860990.204102389] [resource_manager]: Loading hardware 'MujocoSystem' 
+[ros2_control_node-2] [INFO] [1779860990.207529226] [resource_manager]: Initialize hardware 'MujocoSystem' 
+[servo_node_main-7] [WARN] [1779860990.209739884] [moveit_robot_model.robot_model]: Link axis_shoulder_link has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[ros2_control_node-2] [INFO] [1779860990.214325173] [MujocoSystemInterface]: Loading 'mujoco_model' from: /home/wonny/ur3_control/src/ROS2_MuJoCo_UR3/install/ur3_mujoco_sim/share/ur3_mujoco_sim/mjcf/ur3_scene_randomized_87603.xml
+[ros2_control_node-2] [INFO] [1779860990.214521250] [MujocoSystemInterface]: Running the simulation at 100 percent speed
+[ros2_control_node-2] [INFO] [1779860990.214695482] [MujocoSystemInterface]: Running in HEADLESS mode.
+[move_group-6] [WARN] [1779860990.216784587] [moveit_robot_model.robot_model]: Link axis_shoulder_link has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[servo_node_main-7] [WARN] [1779860990.217575140] [moveit_robot_model.robot_model]: Link axis_upper_arm_link has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[servo_node_main-7] [WARN] [1779860990.221244013] [moveit_robot_model.robot_model]: Link axis_forearm_link has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[servo_node_main-7] [WARN] [1779860990.224076176] [moveit_robot_model.robot_model]: Link axis_wrist_1_link has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[move_group-6] [WARN] [1779860990.226395049] [moveit_robot_model.robot_model]: Link axis_upper_arm_link has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[servo_node_main-7] [WARN] [1779860990.227085135] [moveit_robot_model.robot_model]: Link axis_wrist_2_link has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[servo_node_main-7] [WARN] [1779860990.227737954] [moveit_robot_model.robot_model]: Link axis_wrist_3_link has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[servo_node_main-7] [WARN] [1779860990.227749363] [moveit_robot_model.robot_model]: Link axis_tool0 has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[move_group-6] [WARN] [1779860990.230608022] [moveit_robot_model.robot_model]: Link axis_forearm_link has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[move_group-6] [WARN] [1779860990.233398562] [moveit_robot_model.robot_model]: Link axis_wrist_1_link has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[move_group-6] [WARN] [1779860990.236432132] [moveit_robot_model.robot_model]: Link axis_wrist_2_link has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[move_group-6] [WARN] [1779860990.236917994] [moveit_robot_model.robot_model]: Link axis_wrist_3_link has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[move_group-6] [WARN] [1779860990.236928574] [moveit_robot_model.robot_model]: Link axis_tool0 has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[noisy_camera_node-10] [INFO] [1779860990.454330703] [noisy_camera_node]: Noisy RGB: /rl_camera/color -> /rl_camera/noisy/color, sigma=1.0, salt_pepper=1e-05, brightness_jitter=0.1, contrast_jitter=0.01
+[noisy_camera_node-10] [INFO] [1779860990.454886184] [noisy_camera_node]: Noisy depth: /rl_camera/depth -> /rl_camera/noisy/depth, sigma=0.0005m, quant=0.005m, dropout=0.0001, edge_dropout=0.0001, shadow=True, shadow_direction=left, shadow_k=4.0, shadow_max_depth=4.0m
+[spawner-5] [INFO] [1779860990.490204036] [spawner_gripper_motor_position_controller]: waiting for service /controller_manager/list_controllers to become available...
+[spawner-3] [INFO] [1779860990.557210694] [spawner_joint_state_broadcaster]: waiting for service /controller_manager/list_controllers to become available...
+[mujoco_object_manager_node-9] [INFO] [1779860990.567672847] [mujoco_object_manager_node]: Mujoco object manager ready. Listening on /target_pose
+[servo_node_main-7] [WARN] [1779860990.569330747] [moveit_robot_model.robot_model]: Link axis_gripper_tip has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[spawner-4] [INFO] [1779860990.589127705] [spawner_joint_trajectory_controller]: waiting for service /controller_manager/list_controllers to become available...
+[virtual_perception_node-8] [INFO] [1779860990.592639389] [virtual_perception_node]: Virtual perception TF publisher started.
+[move_group-6] [WARN] [1779860990.642093291] [moveit_robot_model.robot_model]: Link axis_gripper_tip has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[servo_node_main-7] [WARN] [1779860990.642352052] [moveit_ros.robot_model_loader]: No kinematics plugins defined. Fill and load kinematics.yaml!
+[servo_node_main-7] [INFO] [1779860991.161320358] [moveit_ros.current_state_monitor]: Listening to joint states on topic '/joint_states'
+[servo_node_main-7] [INFO] [1779860991.163143405] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to '/attached_collision_object' for attached collision objects
+[servo_node_main-7] [INFO] [1779860991.163153085] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Starting planning scene monitor
+[servo_node_main-7] [INFO] [1779860991.163660468] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to '/planning_scene'
+[servo_node_main-7] [INFO] [1779860991.163666990] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Starting world geometry update monitor for collision objects, attached objects, octomap updates.
+[servo_node_main-7] [INFO] [1779860991.163873841] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to 'collision_object'
+[servo_node_main-7] [INFO] [1779860991.164088570] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to 'planning_scene_world' for planning scene world geometry
+[servo_node_main-7] [WARN] [1779860991.164185248] [moveit.ros.occupancy_map_monitor.middleware_handle]: Resolution not specified for Octomap. Assuming resolution = 0.1 instead
+[servo_node_main-7] [ERROR] [1779860991.164190562] [moveit.ros.occupancy_map_monitor.middleware_handle]: No 3D sensor plugin(s) defined for octomap updates
+[move_group-6] [INFO] [1779860991.221316099] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Publishing maintained planning scene on 'monitored_planning_scene'
+[move_group-6] [INFO] [1779860991.221390791] [moveit.ros_planning_interface.moveit_cpp]: Listening to 'joint_states' for joint states
+[move_group-6] [INFO] [1779860991.221810991] [moveit_ros.current_state_monitor]: Listening to joint states on topic 'joint_states'
+[move_group-6] [INFO] [1779860991.222038872] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to '/attached_collision_object' for attached collision objects
+[move_group-6] [INFO] [1779860991.222044764] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Starting planning scene monitor
+[move_group-6] [INFO] [1779860991.222226139] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to '/planning_scene'
+[move_group-6] [INFO] [1779860991.222230678] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Starting world geometry update monitor for collision objects, attached objects, octomap updates.
+[move_group-6] [INFO] [1779860991.222402803] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to 'collision_object'
+[move_group-6] [INFO] [1779860991.222566032] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to 'planning_scene_world' for planning scene world geometry
+[move_group-6] [WARN] [1779860991.222660852] [moveit.ros.occupancy_map_monitor.middleware_handle]: Resolution not specified for Octomap. Assuming resolution = 0.1 instead
+[move_group-6] [ERROR] [1779860991.222665480] [moveit.ros.occupancy_map_monitor.middleware_handle]: No 3D sensor plugin(s) defined for octomap updates
+[ros2_control_node-2] [INFO] [1779860991.606781514] [MujocoSystemInterface]: override_start_position_file not passed. Loading initial positions from ros2_control xacro.
+[ros2_control_node-2] [INFO] [1779860991.606821492] [MujocoSystemInterface]: Not adding hardware interface for sensor in ros2_control xacro: rl_camera
+[ros2_control_node-2] [INFO] [1779860991.612664602] [MujocoSystemInterface]: Module_1_Plate: subscribe /mujoco/weld/module_1_plate_case_offset; services /mujoco/weld/module_1_plate_reset_table_hold (snap to table), /mujoco/weld/module_1_plate_attach_case_base (snap to gripper), /mujoco/weld/module_2_tips_attach_fingers, /mujoco/weld/module_2_tips_detach_world (per-object tips via mujoco_node parameter module2_tip_object: Box_1, Cylinder_1, Cylinder_2). Use same ROS_DOMAIN_ID in all terminals.
+[ros2_control_node-2] [INFO] [1779860991.613304175] [MujocoSystemInterface]: Gripper hybrid: services /mujoco/gripper/hybrid_close and /mujoco/gripper/hybrid_open (actuator 'gripper_motor_joint_pos', joint 'gripper_motor_joint').
+[ros2_control_node-2] [INFO] [1779860991.613312212] [MujocoSystemInterface]: Initializing cameras...
+[ros2_control_node-2] [INFO] [1779860991.613325278] [mujoco_node]: Adding camera: rl_camera
+[ros2_control_node-2] [INFO] [1779860991.613334294] [mujoco_node]:     frame_name: camera_color_optical_frame
+[ros2_control_node-2] [INFO] [1779860991.613336765] [mujoco_node]:     info_topic: /rl_camera/camera_info
+[ros2_control_node-2] [INFO] [1779860991.613338764] [mujoco_node]:     image_topic: /rl_camera/color
+[ros2_control_node-2] [INFO] [1779860991.613340622] [mujoco_node]:     depth_topic: /rl_camera/depth
+[ros2_control_node-2] [INFO] [1779860991.616693736] [MujocoSystemInterface]: Initializing lidar...
+[ros2_control_node-2] [INFO] [1779860991.616751763] [resource_manager]: Successful initialization of hardware 'MujocoSystem'
+[ros2_control_node-2] [INFO] [1779860991.616768953] [MujocoSystemInterface]: Starting the mujoco physics thread...
+[ros2_control_node-2] [INFO] [1779860991.616787985] [resource_manager]: 'configure' hardware 'MujocoSystem' 
+[ros2_control_node-2] [INFO] [1779860991.616792163] [resource_manager]: Successful 'configure' of hardware 'MujocoSystem'
+[ros2_control_node-2] [INFO] [1779860991.616795042] [resource_manager]: 'activate' hardware 'MujocoSystem' 
+[ros2_control_node-2] [INFO] [1779860991.616796970] [MujocoSystemInterface]: Activating MuJoCo hardware interface and starting Simulate threads...
+[ros2_control_node-2] [INFO] [1779860991.620972399] [resource_manager]: Successful 'activate' of hardware 'MujocoSystem'
+[ros2_control_node-2] [INFO] [1779860991.621013354] [mujoco_node]: Starting the lidar processing loop, publishing at 5 Hz
+[ros2_control_node-2] [INFO] [1779860991.637174746] [controller_manager]: update rate is 125 Hz
+[ros2_control_node-2] [INFO] [1779860991.637201092] [controller_manager]: Spawning controller_manager RT thread with scheduler priority: 50
+[ros2_control_node-2] [WARN] [1779860991.637271646] [controller_manager]: Could not enable FIFO RT scheduling policy: with error number <1>(Operation not permitted). See [https://control.ros.org/master/doc/ros2_control/controller_manager/doc/userdoc.html] for details on how to enable realtime scheduling.
+[ros2_control_node-2] [INFO] [1779860991.743530849] [controller_manager]: Loading controller 'gripper_motor_position_controller'
+[spawner-5] [INFO] [1779860991.757066373] [spawner_gripper_motor_position_controller]: [94mLoaded [1mgripper_motor_position_controller[0m
+[ros2_control_node-2] [INFO] [1779860991.758154374] [controller_manager]: Configuring controller 'gripper_motor_position_controller'
+[ros2_control_node-2] [INFO] [1779860991.758705097] [gripper_motor_position_controller]: configure successful
+[ros2_control_node-2] [INFO] [1779860991.772594962] [MujocoSystemInterface]: Joint gripper_motor_joint: position control enabled (velocity, effort disabled)
+[ros2_control_node-2] [INFO] [1779860991.772657066] [gripper_motor_position_controller]: activate successful
+[spawner-5] [INFO] [1779860991.781550881] [spawner_gripper_motor_position_controller]: [92mConfigured and activated [1mgripper_motor_position_controller[0m
+[ros2_control_node-2] [INFO] [1779860991.811084402] [controller_manager]: Loading controller 'joint_state_broadcaster'
+[spawner-3] [INFO] [1779860991.821847622] [spawner_joint_state_broadcaster]: [94mLoaded [1mjoint_state_broadcaster[0m
+[ros2_control_node-2] [INFO] [1779860991.822720507] [controller_manager]: Configuring controller 'joint_state_broadcaster'
+[ros2_control_node-2] [INFO] [1779860991.822783414] [joint_state_broadcaster]: 'joints' or 'interfaces' parameter is empty. All available state interfaces will be published
+[spawner-3] [INFO] [1779860991.845809210] [spawner_joint_state_broadcaster]: [92mConfigured and activated [1mjoint_state_broadcaster[0m
+[ros2_control_node-2] [INFO] [1779860991.846988556] [controller_manager]: Loading controller 'joint_trajectory_controller'
+[ros2_control_node-2] [WARN] [1779860991.856294881] [joint_trajectory_controller]: [Deprecated]: "allow_nonzero_velocity_at_trajectory_end" is set to true. The default behavior will change to false.
+[spawner-4] [INFO] [1779860991.861988097] [spawner_joint_trajectory_controller]: [94mLoaded [1mjoint_trajectory_controller[0m
+[ros2_control_node-2] [INFO] [1779860991.863140102] [controller_manager]: Configuring controller 'joint_trajectory_controller'
+[ros2_control_node-2] [INFO] [1779860991.863292488] [joint_trajectory_controller]: No specific joint names are used for command interfaces. Using 'joints' parameter.
+[ros2_control_node-2] [INFO] [1779860991.863312433] [joint_trajectory_controller]: Command interfaces are [position] and state interfaces are [position velocity].
+[ros2_control_node-2] [INFO] [1779860991.863331214] [joint_trajectory_controller]: Using 'splines' interpolation method.
+[ros2_control_node-2] [INFO] [1779860991.864257139] [joint_trajectory_controller]: Controller state will be published at 50.00 Hz.
+[ros2_control_node-2] [INFO] [1779860991.865851953] [joint_trajectory_controller]: Action status changes will be monitored at 20.00 Hz.
+[ros2_control_node-2] [INFO] [1779860991.884401728] [MujocoSystemInterface]: Joint shoulder_pan_joint: position control enabled (velocity, effort disabled)
+[ros2_control_node-2] [INFO] [1779860991.884419906] [MujocoSystemInterface]: Joint shoulder_lift_joint: position control enabled (velocity, effort disabled)
+[ros2_control_node-2] [INFO] [1779860991.884423912] [MujocoSystemInterface]: Joint elbow_joint: position control enabled (velocity, effort disabled)
+[ros2_control_node-2] [INFO] [1779860991.884426923] [MujocoSystemInterface]: Joint wrist_1_joint: position control enabled (velocity, effort disabled)
+[ros2_control_node-2] [INFO] [1779860991.884429801] [MujocoSystemInterface]: Joint wrist_2_joint: position control enabled (velocity, effort disabled)
+[ros2_control_node-2] [INFO] [1779860991.884432422] [MujocoSystemInterface]: Joint wrist_3_joint: position control enabled (velocity, effort disabled)
+[spawner-4] [INFO] [1779860991.893278338] [spawner_joint_trajectory_controller]: [92mConfigured and activated [1mjoint_trajectory_controller[0m
+[INFO] [spawner-5]: process has finished cleanly [pid 87614]
+[ros2_control_node-2] [INFO] [1779860991.912905436] [mujoco_node]: Initializing rendering for cameras
+[INFO] [spawner-3]: process has finished cleanly [pid 87610]
+[INFO] [spawner-4]: process has finished cleanly [pid 87612]
+[ros2_control_node-2] [INFO] [1779860992.036267768] [mujoco_node]: Starting the camera rendering loop, publishing at 30.000000 Hz
+[ros2_control_node-2] [INFO] [1779860992.036314784] [mujoco_node]: Resized offscreen buffer to 640 x 480
+[servo_node_main-7] [INFO] [1779860993.108592101] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Publishing maintained planning scene on '/servo_node/publish_planning_scene'
+[move_group-6] [INFO] [1779860993.944232664] [moveit.ros_planning_interface.moveit_cpp]: Loading planning pipeline 'move_group'
+[move_group-6] [INFO] [1779860993.949156974] [moveit.ros_planning.planning_pipeline]: Using planning interface 'OMPL'
+[move_group-6] [INFO] [1779860993.950334012] [moveit_ros.add_time_optimal_parameterization]: Param 'move_group.path_tolerance' was not set. Using default value: 0.100000
+[move_group-6] [INFO] [1779860993.950343181] [moveit_ros.add_time_optimal_parameterization]: Param 'move_group.resample_dt' was not set. Using default value: 0.100000
+[move_group-6] [INFO] [1779860993.950345023] [moveit_ros.add_time_optimal_parameterization]: Param 'move_group.min_angle_change' was not set. Using default value: 0.001000
+[move_group-6] [INFO] [1779860993.950350605] [moveit_ros.fix_workspace_bounds]: Param 'move_group.default_workspace_bounds' was not set. Using default value: 10.000000
+[move_group-6] [INFO] [1779860993.950357213] [moveit_ros.fix_start_state_bounds]: Param 'move_group.start_state_max_bounds_error' was set to 0.100000
+[move_group-6] [INFO] [1779860993.950359372] [moveit_ros.fix_start_state_bounds]: Param 'move_group.start_state_max_dt' was not set. Using default value: 0.500000
+[move_group-6] [INFO] [1779860993.950364031] [moveit_ros.fix_start_state_collision]: Param 'move_group.start_state_max_dt' was not set. Using default value: 0.500000
+[move_group-6] [INFO] [1779860993.950365712] [moveit_ros.fix_start_state_collision]: Param 'move_group.jiggle_fraction' was not set. Using default value: 0.020000
+[move_group-6] [INFO] [1779860993.950367704] [moveit_ros.fix_start_state_collision]: Param 'move_group.max_sampling_attempts' was not set. Using default value: 100
+[move_group-6] [INFO] [1779860993.950372101] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Add Time Optimal Parameterization'
+[move_group-6] [INFO] [1779860993.950373703] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Fix Workspace Bounds'
+[move_group-6] [INFO] [1779860993.950374957] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Fix Start State Bounds'
+[move_group-6] [INFO] [1779860993.950376095] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Fix Start State In Collision'
+[move_group-6] [INFO] [1779860993.950377191] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Fix Start State Path Constraints'
+[move_group-6] [INFO] [1779860994.042041872] [moveit.plugins.moveit_simple_controller_manager]: Added FollowJointTrajectory controller for scaled_joint_trajectory_controller
+[move_group-6] [INFO] [1779860994.049652748] [moveit.plugins.moveit_simple_controller_manager]: Added FollowJointTrajectory controller for joint_trajectory_controller
+[move_group-6] [INFO] [1779860994.049773057] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779860994.049791455] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779860994.050921803] [moveit_ros.trajectory_execution_manager]: Trajectory execution is not managing controllers
+[move_group-6] [INFO] [1779860994.050935051] [move_group.move_group]: MoveGroup debug mode is ON
+[move_group-6] [INFO] [1779860994.074069882] [move_group.move_group]: 
+[move_group-6] 
+[move_group-6] ********************************************************
+[move_group-6] * MoveGroup using: 
+[move_group-6] *     - ApplyPlanningSceneService
+[move_group-6] *     - ClearOctomapService
+[move_group-6] *     - CartesianPathService
+[move_group-6] *     - ExecuteTrajectoryAction
+[move_group-6] *     - GetPlanningSceneService
+[move_group-6] *     - KinematicsService
+[move_group-6] *     - MoveAction
+[move_group-6] *     - MotionPlanService
+[move_group-6] *     - QueryPlannersService
+[move_group-6] *     - StateValidationService
+[move_group-6] ********************************************************
+[move_group-6] 
+[move_group-6] [INFO] [1779860994.074096429] [moveit_move_group_capabilities_base.move_group_context]: MoveGroup context using planning plugin ompl_interface/OMPLPlanner
+[move_group-6] [INFO] [1779860994.074100956] [moveit_move_group_capabilities_base.move_group_context]: MoveGroup context initialization complete
+[move_group-6] [96mLoading 'move_group/ApplyPlanningSceneService'...
+[move_group-6] [0m[96mLoading 'move_group/ClearOctomapService'...
+[move_group-6] [0m[96mLoading 'move_group/MoveGroupCartesianPathService'...
+[move_group-6] [0m[96mLoading 'move_group/MoveGroupExecuteTrajectoryAction'...
+[move_group-6] [0m[96mLoading 'move_group/MoveGroupGetPlanningSceneService'...
+[move_group-6] [0m[96mLoading 'move_group/MoveGroupKinematicsService'...
+[move_group-6] [0m[96mLoading 'move_group/MoveGroupMoveAction'...
+[move_group-6] [0m[96mLoading 'move_group/MoveGroupPlanService'...
+[move_group-6] [0m[96mLoading 'move_group/MoveGroupQueryPlannersService'...
+[move_group-6] [0m[96mLoading 'move_group/MoveGroupStateValidationService'...
+[move_group-6] [0m[92m
+[move_group-6] You can start planning now!
+[move_group-6] 
+[servo_node_main-7] [INFO] [1779860998.109849428] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: GetPlanningScene service call to get_planning_scene timed out. at ./planning_scene_monitor/src/planning_scene_monitor.cpp:586
+[servo_node_main-7] [WARN] [1779860998.123655784] [moveit_servo.servo_calcs]: No kinematics solver instantiated for group 'ur_manipulator'. Will use inverse Jacobian for servo calculations instead.
+[move_group-6] [INFO] [1779861016.020857947] [moveit_move_group_default_capabilities.move_action_capability]: Received request
+[move_group-6] [INFO] [1779861016.020944765] [moveit_move_group_default_capabilities.move_action_capability]: executing..
+[move_group-6] [INFO] [1779861016.026939994] [moveit_move_group_default_capabilities.move_action_capability]: Combined planning and execution request received for MoveGroup action. Forwarding to planning and execution pipeline.
+[move_group-6] [WARN] [1779861016.027055631] [moveit_move_group_capabilities_base.move_group_capability]: Execution of motions should always start at the robot's current state. Ignoring the state supplied as start state in the motion planning request
+[move_group-6] [WARN] [1779861016.027063832] [moveit_move_group_capabilities_base.move_group_capability]: Execution of motions should always start at the robot's current state. Ignoring the state supplied as difference in the planning scene diff
+[move_group-6] [INFO] [1779861016.027076457] [moveit_ros.plan_execution]: Planning attempt 1 of at most 1
+[move_group-6] [INFO] [1779861016.028822773] [moveit.ompl_planning.model_based_planning_context]: Planner configuration 'ur_manipulator' will use planner 'geometric::RRTConnect'. Additional configuration parameters will be set when the planner is constructed.
+[move_group-6] [INFO] [1779861016.145224120] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861016.145244144] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861016.145285449] [moveit_ros.trajectory_execution_manager]: Validating trajectory with allowed_start_tolerance 0.01
+[move_group-6] [INFO] [1779861016.146761823] [moveit_ros.trajectory_execution_manager]: Starting trajectory execution ...
+[move_group-6] [INFO] [1779861016.146799901] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861016.146817674] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861016.146953094] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: sending trajectory to joint_trajectory_controller
+[ros2_control_node-2] [INFO] [1779861016.147135048] [joint_trajectory_controller]: Received new action goal
+[ros2_control_node-2] [INFO] [1779861016.147166157] [joint_trajectory_controller]: Accepted new action goal
+[move_group-6] [INFO] [1779861016.147254186] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: joint_trajectory_controller started execution
+[move_group-6] [INFO] [1779861016.147272009] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal request accepted!
+[ros2_control_node-2] [INFO] [1779861020.930837414] [joint_trajectory_controller]: Goal reached, success!
+[move_group-6] [INFO] [1779861020.947619316] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Controller 'joint_trajectory_controller' successfully finished
+[move_group-6] [INFO] [1779861020.947674565] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status SUCCEEDED ...
+[move_group-6] [INFO] [1779861020.956900629] [moveit_move_group_default_capabilities.move_action_capability]: Solution was found and executed.
+[move_group-6] [INFO] [1779861023.962299618] [moveit_move_group_default_capabilities.move_action_capability]: Received request
+[move_group-6] [INFO] [1779861023.962363981] [moveit_move_group_default_capabilities.move_action_capability]: executing..
+[move_group-6] [INFO] [1779861023.963028682] [moveit_move_group_default_capabilities.move_action_capability]: Combined planning and execution request received for MoveGroup action. Forwarding to planning and execution pipeline.
+[move_group-6] [WARN] [1779861023.963045688] [moveit_move_group_capabilities_base.move_group_capability]: Execution of motions should always start at the robot's current state. Ignoring the state supplied as start state in the motion planning request
+[move_group-6] [WARN] [1779861023.963051383] [moveit_move_group_capabilities_base.move_group_capability]: Execution of motions should always start at the robot's current state. Ignoring the state supplied as difference in the planning scene diff
+[move_group-6] [INFO] [1779861023.963056146] [moveit_ros.plan_execution]: Planning attempt 1 of at most 1
+[move_group-6] [INFO] [1779861023.964297754] [moveit.ompl_planning.model_based_planning_context]: Planner configuration 'ur_manipulator' will use planner 'geometric::RRTConnect'. Additional configuration parameters will be set when the planner is constructed.
+[move_group-6] [INFO] [1779861024.059515642] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861024.059537202] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861024.059578520] [moveit_ros.trajectory_execution_manager]: Validating trajectory with allowed_start_tolerance 0.01
+[move_group-6] [INFO] [1779861024.059613928] [moveit_ros.trajectory_execution_manager]: Starting trajectory execution ...
+[move_group-6] [INFO] [1779861024.059653962] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861024.059663030] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861024.059760250] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: sending trajectory to joint_trajectory_controller
+[ros2_control_node-2] [INFO] [1779861024.059865258] [joint_trajectory_controller]: Received new action goal
+[ros2_control_node-2] [INFO] [1779861024.059888494] [joint_trajectory_controller]: Accepted new action goal
+[move_group-6] [INFO] [1779861024.059972664] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: joint_trajectory_controller started execution
+[move_group-6] [INFO] [1779861024.059982768] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal request accepted!
+[ros2_control_node-2] [INFO] [1779861030.258480772] [joint_trajectory_controller]: Goal reached, success!
+[move_group-6] [INFO] [1779861030.260452718] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Controller 'joint_trajectory_controller' successfully finished
+[move_group-6] [INFO] [1779861030.260499434] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status SUCCEEDED ...
+[move_group-6] [INFO] [1779861030.269728506] [moveit_move_group_default_capabilities.move_action_capability]: Solution was found and executed.
+[move_group-6] [WARN] [1779861030.271756163] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Unable to transform object from frame 'fp_object' to planning frame'world' (Lookup would require extrapolation into the past.  Requested time 24.454000 but the earliest data is at time 28.610000, when looking up transform from frame [fp_object] to frame [world])
+[move_group-6] [INFO] [1779861030.273654014] [moveit_move_group_default_capabilities.move_action_capability]: Received request
+[move_group-6] [INFO] [1779861030.273715216] [moveit_move_group_default_capabilities.move_action_capability]: executing..
+[move_group-6] [WARN] [1779861030.274828804] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Unable to transform object from frame 'fp_object' to planning frame'world' (Lookup would require extrapolation into the past.  Requested time 24.454000 but the earliest data is at time 28.610000, when looking up transform from frame [fp_object] to frame [world])
+[move_group-6] [INFO] [1779861030.274849006] [moveit_move_group_default_capabilities.move_action_capability]: Combined planning and execution request received for MoveGroup action. Forwarding to planning and execution pipeline.
+[move_group-6] [WARN] [1779861030.274866241] [moveit_move_group_capabilities_base.move_group_capability]: Execution of motions should always start at the robot's current state. Ignoring the state supplied as start state in the motion planning request
+[move_group-6] [WARN] [1779861030.274871948] [moveit_move_group_capabilities_base.move_group_capability]: Execution of motions should always start at the robot's current state. Ignoring the state supplied as difference in the planning scene diff
+[move_group-6] [INFO] [1779861030.274876980] [moveit_ros.plan_execution]: Planning attempt 1 of at most 1
+[move_group-6] [INFO] [1779861030.276153439] [moveit.ompl_planning.model_based_planning_context]: Planner configuration 'ur_manipulator' will use planner 'geometric::RRTConnect'. Additional configuration parameters will be set when the planner is constructed.
+[move_group-6] [INFO] [1779861030.365861872] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861030.365881503] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861030.365916474] [moveit_ros.trajectory_execution_manager]: Validating trajectory with allowed_start_tolerance 0.01
+[move_group-6] [INFO] [1779861030.371356450] [moveit_ros.trajectory_execution_manager]: Starting trajectory execution ...
+[move_group-6] [INFO] [1779861030.371390669] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861030.371407704] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861030.371530493] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: sending trajectory to joint_trajectory_controller
+[ros2_control_node-2] [INFO] [1779861030.371659506] [joint_trajectory_controller]: Received new action goal
+[ros2_control_node-2] [INFO] [1779861030.371687794] [joint_trajectory_controller]: Accepted new action goal
+[move_group-6] [INFO] [1779861030.371820234] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: joint_trajectory_controller started execution
+[move_group-6] [INFO] [1779861030.371830873] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal request accepted!
+[ros2_control_node-2] [INFO] [1779861035.074946422] [joint_trajectory_controller]: Goal reached, success!
+[move_group-6] [INFO] [1779861035.122152601] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Controller 'joint_trajectory_controller' successfully finished
+[move_group-6] [INFO] [1779861035.122846942] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status SUCCEEDED ...
+[move_group-6] [INFO] [1779861035.131440437] [moveit_move_group_default_capabilities.move_action_capability]: Solution was found and executed.
+[move_group-6] [INFO] [1779861035.134028435] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Received request to compute Cartesian path
+[move_group-6] [WARN] [1779861035.134086673] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Unable to transform object from frame 'fp_object' to planning frame'world' (Lookup would require extrapolation into the past.  Requested time 24.454000 but the earliest data is at time 33.482000, when looking up transform from frame [fp_object] to frame [world])
+[move_group-6] [INFO] [1779861035.134133320] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Attempting to follow 1 waypoints for link 'tool0' using a step of 0.000500 m and jump threshold 2.000000 (in global reference frame)
+[move_group-6] [INFO] [1779861035.186173533] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Computed Cartesian path with 172 points (followed 100.000000% of requested trajectory)
+[move_group-6] [INFO] [1779861035.187357413] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Received goal request
+[move_group-6] [INFO] [1779861035.187420526] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution request received
+[move_group-6] [INFO] [1779861035.187442418] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861035.187457297] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861035.187511704] [moveit_ros.trajectory_execution_manager]: Validating trajectory with allowed_start_tolerance 0.01
+[move_group-6] [INFO] [1779861035.187560545] [moveit_ros.trajectory_execution_manager]: Starting trajectory execution ...
+[move_group-6] [INFO] [1779861035.187587625] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861035.187601708] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861035.187723391] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: sending trajectory to joint_trajectory_controller
+[ros2_control_node-2] [INFO] [1779861035.187837715] [joint_trajectory_controller]: Received new action goal
+[ros2_control_node-2] [INFO] [1779861035.187866219] [joint_trajectory_controller]: Accepted new action goal
+[move_group-6] [INFO] [1779861035.187969728] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: joint_trajectory_controller started execution
+[move_group-6] [INFO] [1779861035.187976436] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal request accepted!
+[ros2_control_node-2] [INFO] [1779861040.979316091] [joint_trajectory_controller]: Goal reached, success!
+[move_group-6] [INFO] [1779861040.988381349] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Controller 'joint_trajectory_controller' successfully finished
+[move_group-6] [INFO] [1779861040.988438355] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status SUCCEEDED ...
+[move_group-6] [INFO] [1779861040.988479303] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution completed: SUCCEEDED
+[ros2_control_node-2] [INFO] [1779861041.541481817] [MujocoSystemInterface]: Module_1 plate kinematic snap: Case_Base->Plate offset applied in MuJoCo before weld (arm joints unchanged).
+[move_group-6] [INFO] [1779861042.268963942] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Received request to compute Cartesian path
+[move_group-6] [WARN] [1779861042.269028855] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Unable to transform object from frame 'fp_object' to planning frame'world' (Lookup would require extrapolation into the past.  Requested time 24.454000 but the earliest data is at time 40.594000, when looking up transform from frame [fp_object] to frame [world])
+[move_group-6] [INFO] [1779861042.269077392] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Attempting to follow 1 waypoints for link 'tool0' using a step of 0.000500 m and jump threshold 2.000000 (in global reference frame)
+[move_group-6] [INFO] [1779861042.314038371] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Computed Cartesian path with 175 points (followed 100.000000% of requested trajectory)
+[move_group-6] [INFO] [1779861042.315323309] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Received goal request
+[move_group-6] [INFO] [1779861042.315378942] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution request received
+[move_group-6] [INFO] [1779861042.315395532] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861042.315408697] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861042.315445256] [moveit_ros.trajectory_execution_manager]: Validating trajectory with allowed_start_tolerance 0.01
+[move_group-6] [INFO] [1779861042.315493656] [moveit_ros.trajectory_execution_manager]: Starting trajectory execution ...
+[move_group-6] [INFO] [1779861042.315514225] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861042.315526104] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861042.315642393] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: sending trajectory to joint_trajectory_controller
+[move_group-6] [INFO] [1779861042.315861183] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: joint_trajectory_controller started execution
+[move_group-6] [INFO] [1779861042.315871950] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal request accepted!
+[ros2_control_node-2] [INFO] [1779861042.315764219] [joint_trajectory_controller]: Received new action goal
+[ros2_control_node-2] [INFO] [1779861042.315786861] [joint_trajectory_controller]: Accepted new action goal
+[ros2_control_node-2] [INFO] [1779861048.050942665] [joint_trajectory_controller]: Goal reached, success!
+[move_group-6] [INFO] [1779861048.066245405] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Controller 'joint_trajectory_controller' successfully finished
+[move_group-6] [INFO] [1779861048.066779323] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status SUCCEEDED ...
+[move_group-6] [INFO] [1779861048.066826614] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution completed: SUCCEEDED
+[move_group-6] [WARN] [1779861048.569512965] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Unable to transform object from frame 'fp_object' to planning frame'world' (Lookup would require extrapolation into the past.  Requested time 24.454000 but the earliest data is at time 46.922000, when looking up transform from frame [fp_object] to frame [world])
+[move_group-6] [INFO] [1779861048.571584131] [moveit_move_group_default_capabilities.move_action_capability]: Received request
+[move_group-6] [INFO] [1779861048.571639219] [moveit_move_group_default_capabilities.move_action_capability]: executing..
+[move_group-6] [WARN] [1779861048.571704757] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Unable to transform object from frame 'fp_object' to planning frame'world' (Lookup would require extrapolation into the past.  Requested time 24.454000 but the earliest data is at time 46.922000, when looking up transform from frame [fp_object] to frame [world])
+[move_group-6] [INFO] [1779861048.571714755] [moveit_move_group_default_capabilities.move_action_capability]: Combined planning and execution request received for MoveGroup action. Forwarding to planning and execution pipeline.
+[move_group-6] [WARN] [1779861048.571727630] [moveit_move_group_capabilities_base.move_group_capability]: Execution of motions should always start at the robot's current state. Ignoring the state supplied as start state in the motion planning request
+[move_group-6] [WARN] [1779861048.571733067] [moveit_move_group_capabilities_base.move_group_capability]: Execution of motions should always start at the robot's current state. Ignoring the state supplied as difference in the planning scene diff
+[move_group-6] [INFO] [1779861048.571737556] [moveit_ros.plan_execution]: Planning attempt 1 of at most 1
+[move_group-6] [INFO] [1779861048.573020570] [moveit.ompl_planning.model_based_planning_context]: Planner configuration 'ur_manipulator' will use planner 'geometric::RRTConnect'. Additional configuration parameters will be set when the planner is constructed.
+[move_group-6] [INFO] [1779861048.710687336] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861048.710707464] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861048.710742170] [moveit_ros.trajectory_execution_manager]: Validating trajectory with allowed_start_tolerance 0.01
+[move_group-6] [INFO] [1779861048.715205116] [moveit_ros.trajectory_execution_manager]: Starting trajectory execution ...
+[move_group-6] [INFO] [1779861048.715237257] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861048.715253232] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861048.715366158] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: sending trajectory to joint_trajectory_controller
+[ros2_control_node-2] [INFO] [1779861048.715471963] [joint_trajectory_controller]: Received new action goal
+[ros2_control_node-2] [INFO] [1779861048.715494172] [joint_trajectory_controller]: Accepted new action goal
+[move_group-6] [INFO] [1779861048.715572667] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: joint_trajectory_controller started execution
+[move_group-6] [INFO] [1779861048.715581471] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal request accepted!
+[ros2_control_node-2] [INFO] [1779861051.427342969] [joint_trajectory_controller]: Goal reached, success!
+[move_group-6] [INFO] [1779861051.465797141] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Controller 'joint_trajectory_controller' successfully finished
+[move_group-6] [INFO] [1779861051.466667304] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status SUCCEEDED ...
+[move_group-6] [INFO] [1779861051.475297022] [moveit_move_group_default_capabilities.move_action_capability]: Solution was found and executed.
+[move_group-6] [INFO] [1779861051.678233024] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Received request to compute Cartesian path
+[move_group-6] [WARN] [1779861051.678295001] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Unable to transform object from frame 'fp_object' to planning frame'world' (Lookup would require extrapolation into the past.  Requested time 24.454000 but the earliest data is at time 50.002000, when looking up transform from frame [fp_object] to frame [world])
+[move_group-6] [INFO] [1779861051.678341885] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Attempting to follow 1 waypoints for link 'tool0' using a step of 0.005000 m and jump threshold 2.000000 (in global reference frame)
+[move_group-6] [WARN] [1779861051.680764149] [moveit_robot_state.cartesian_interpolator]: The computed trajectory is too short to detect jumps in joint-space Need at least 10 steps, only got 9. Try a lower max_step.
+[move_group-6] [INFO] [1779861051.680890810] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Computed Cartesian path with 9 points (followed 100.000000% of requested trajectory)
+[move_group-6] [INFO] [1779861051.681836289] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Received goal request
+[move_group-6] [INFO] [1779861051.681892539] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution request received
+[move_group-6] [INFO] [1779861051.681907804] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861051.681920027] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861051.681957228] [moveit_ros.trajectory_execution_manager]: Validating trajectory with allowed_start_tolerance 0.01
+[move_group-6] [INFO] [1779861051.682972133] [moveit_ros.trajectory_execution_manager]: Starting trajectory execution ...
+[move_group-6] [INFO] [1779861051.682997248] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861051.683011449] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861051.683126424] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: sending trajectory to joint_trajectory_controller
+[ros2_control_node-2] [INFO] [1779861051.683206844] [joint_trajectory_controller]: Received new action goal
+[ros2_control_node-2] [INFO] [1779861051.683235422] [joint_trajectory_controller]: Accepted new action goal
+[move_group-6] [INFO] [1779861051.683292904] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: joint_trajectory_controller started execution
+[move_group-6] [INFO] [1779861051.683299790] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal request accepted!
+[ros2_control_node-2] [INFO] [1779861053.531236895] [joint_trajectory_controller]: Goal reached, success!
+[move_group-6] [INFO] [1779861053.533573504] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Controller 'joint_trajectory_controller' successfully finished
+[move_group-6] [INFO] [1779861053.539267212] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status SUCCEEDED ...
+[move_group-6] [INFO] [1779861053.539321786] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution completed: SUCCEEDED
+[move_group-6] [INFO] [1779861054.246166485] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Received request to compute Cartesian path
+[move_group-6] [WARN] [1779861054.246233619] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Unable to transform object from frame 'fp_object' to planning frame'world' (Lookup would require extrapolation into the past.  Requested time 24.454000 but the earliest data is at time 52.578000, when looking up transform from frame [fp_object] to frame [world])
+[move_group-6] [INFO] [1779861054.246281567] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Attempting to follow 1 waypoints for link 'tool0' using a step of 0.005000 m and jump threshold 2.000000 (in global reference frame)
+[move_group-6] [INFO] [1779861054.249707503] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Computed Cartesian path with 14 points (followed 100.000000% of requested trajectory)
+[move_group-6] [INFO] [1779861054.250700630] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Received goal request
+[move_group-6] [INFO] [1779861054.250740946] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution request received
+[move_group-6] [INFO] [1779861054.250757508] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861054.250768076] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861054.250801213] [moveit_ros.trajectory_execution_manager]: Validating trajectory with allowed_start_tolerance 0.01
+[move_group-6] [INFO] [1779861054.250838246] [moveit_ros.trajectory_execution_manager]: Starting trajectory execution ...
+[move_group-6] [INFO] [1779861054.250864395] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861054.250878821] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861054.250999221] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: sending trajectory to joint_trajectory_controller
+[ros2_control_node-2] [INFO] [1779861054.251107226] [joint_trajectory_controller]: Received new action goal
+[ros2_control_node-2] [INFO] [1779861054.251144836] [joint_trajectory_controller]: Accepted new action goal
+[move_group-6] [INFO] [1779861054.251205361] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: joint_trajectory_controller started execution
+[move_group-6] [INFO] [1779861054.251211160] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal request accepted!
+[ros2_control_node-2] [INFO] [1779861056.930497843] [joint_trajectory_controller]: Goal reached, success!
+[move_group-6] [INFO] [1779861056.951482186] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Controller 'joint_trajectory_controller' successfully finished
+[move_group-6] [INFO] [1779861056.954596772] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status SUCCEEDED ...
+[move_group-6] [INFO] [1779861056.954642061] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution completed: SUCCEEDED
+[move_group-6] [INFO] [1779861057.456431082] [moveit_move_group_default_capabilities.move_action_capability]: Received request
+[move_group-6] [INFO] [1779861057.456499688] [moveit_move_group_default_capabilities.move_action_capability]: executing..
+[move_group-6] [WARN] [1779861057.458507829] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Unable to transform object from frame 'fp_object' to planning frame'world' (Lookup would require extrapolation into the past.  Requested time 24.454000 but the earliest data is at time 55.770000, when looking up transform from frame [fp_object] to frame [world])
+[move_group-6] [INFO] [1779861057.458525885] [moveit_move_group_default_capabilities.move_action_capability]: Combined planning and execution request received for MoveGroup action. Forwarding to planning and execution pipeline.
+[move_group-6] [WARN] [1779861057.458540335] [moveit_move_group_capabilities_base.move_group_capability]: Execution of motions should always start at the robot's current state. Ignoring the state supplied as start state in the motion planning request
+[move_group-6] [WARN] [1779861057.458545644] [moveit_move_group_capabilities_base.move_group_capability]: Execution of motions should always start at the robot's current state. Ignoring the state supplied as difference in the planning scene diff
+[move_group-6] [INFO] [1779861057.458571065] [moveit_ros.plan_execution]: Planning attempt 1 of at most 1
+[move_group-6] [INFO] [1779861057.460491172] [moveit.ompl_planning.model_based_planning_context]: Planner configuration 'ur_manipulator' will use planner 'geometric::RRTConnect'. Additional configuration parameters will be set when the planner is constructed.
+[move_group-6] [INFO] [1779861057.551393726] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861057.551413251] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861057.551430301] [moveit_ros.trajectory_execution_manager]: Validating trajectory with allowed_start_tolerance 0.01
+[move_group-6] [INFO] [1779861057.554629646] [moveit_ros.trajectory_execution_manager]: Starting trajectory execution ...
+[move_group-6] [INFO] [1779861057.554662338] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861057.554678235] [moveit.plugins.moveit_simple_controller_manager]: Returned 2 controllers in list
+[move_group-6] [INFO] [1779861057.554798505] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: sending trajectory to joint_trajectory_controller
+[ros2_control_node-2] [INFO] [1779861057.554900205] [joint_trajectory_controller]: Received new action goal
+[ros2_control_node-2] [INFO] [1779861057.554930256] [joint_trajectory_controller]: Accepted new action goal
+[move_group-6] [INFO] [1779861057.555010867] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: joint_trajectory_controller started execution
+[move_group-6] [INFO] [1779861057.555021718] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal request accepted!
+[ros2_control_node-2] [INFO] [1779861060.474225226] [joint_trajectory_controller]: Goal reached, success!
+[move_group-6] [INFO] [1779861060.505244254] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Controller 'joint_trajectory_controller' successfully finished
+[move_group-6] [INFO] [1779861060.507260324] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status SUCCEEDED ...
+[move_group-6] [INFO] [1779861060.514754014] [moveit_move_group_default_capabilities.move_action_capability]: Solution was found and executed.

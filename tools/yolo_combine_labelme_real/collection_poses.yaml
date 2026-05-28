@@ -1,0 +1,73 @@
+# Labelme / real-camera collection poses (Module 2 workspace).
+#
+# Workflow:
+#   1. Move arm to each pose below (Cartesian or joint).
+#   2. Do NOT run yolo_visual_center / look-at before saving the image.
+#   3. Save RGB + Labelme polygon while the object is visible (center OR corner of image).
+#   4. Repeat for every object class and lighting variation you care about.
+#
+# Offsets are relative to Stage_1_Module_2_Upper in ur3_action_sequence.yaml.
+# Tune target_xyz if your table layout differs.
+
+_stage1: &stage1
+  type: cartesian
+  target_xyz: [0.05, -0.366, 0.20]
+  lookat_vector: [0.0, 0.0, -1.0]
+  tcp_roll_rad: 0
+
+# ~45% of frames: object near image center (similar to old look-at-only data).
+poses_center:
+  - name: collect_center
+    <<: *stage1
+    note: Object should appear near the middle of /rl_camera/color
+
+# ~55% of frames: object toward corners / edges (fixes corner detection at runtime).
+poses_off_center:
+  - name: collect_corner_upper_left
+    type: cartesian
+    target_xyz: [0.11, -0.302, 0.20]
+    lookat_vector: [0.0, 0.0, -1.0]
+    tcp_roll_rad: 0
+    note: Shift TCP +X, +Y — object tends toward upper-left in camera
+
+  - name: collect_corner_upper_right
+    type: cartesian
+    target_xyz: [-0.01, -0.302, 0.20]
+    lookat_vector: [0.0, 0.0, -1.0]
+    tcp_roll_rad: 0
+    note: Shift TCP -X, +Y — upper-right in camera
+
+  - name: collect_corner_lower_left
+    type: cartesian
+    target_xyz: [0.11, -0.430, 0.20]
+    lookat_vector: [0.0, 0.0, -1.0]
+    tcp_roll_rad: 0
+    note: Shift TCP +X, -Y — lower-left in camera
+
+  - name: collect_corner_lower_right
+    type: cartesian
+    target_xyz: [-0.01, -0.430, 0.20]
+    lookat_vector: [0.0, 0.0, -1.0]
+    tcp_roll_rad: 0
+    note: Shift TCP -X, -Y — lower-right in camera
+
+  - name: collect_edge_left
+    type: cartesian
+    target_xyz: [0.11, -0.366, 0.20]
+    lookat_vector: [0.0, 0.0, -1.0]
+    tcp_roll_rad: 0
+
+  - name: collect_edge_right
+    type: cartesian
+    target_xyz: [-0.01, -0.366, 0.20]
+    lookat_vector: [0.0, 0.0, -1.0]
+    tcp_roll_rad: 0
+
+# Optional wide joint pose (no look-at before capture).
+poses_joint:
+  - name: collect_joint_wide_view
+    type: joint
+    target: [-1.186824, -2.338741, 2.042035, -1.850049, -1.500983, -3.159046]
+    velocity_scaling: 0.2
+    acceleration_scaling: 0.2
+    note: Farther view; object may be smaller but still label full mask

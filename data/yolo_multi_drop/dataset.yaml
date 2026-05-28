@@ -1,0 +1,5 @@
+path: /home/wonny/ur3_control/data/yolo_multi_drop
+train: images/train
+val: images/val
+nc: 3
+names: ["Cylinder_1", "Cylinder_2", "Box_1"]
