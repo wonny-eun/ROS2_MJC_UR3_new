@@ -6,6 +6,7 @@ from __future__ import annotations
 import math
 import os
 import select
+from copy import deepcopy
 import signal
 import statistics
 import sys
@@ -13,7 +14,7 @@ import threading
 import time
 from collections import deque
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, Optional
+from typing import Any, Callable, Dict, Iterable, Optional, Sequence
 
 import cv2
 import numpy as np
@@ -22,29 +23,33 @@ import yaml
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 from builtin_interfaces.msg import Duration as DurationMsg
 from control_msgs.action import FollowJointTrajectory
-from geometry_msgs.msg import Pose, PoseStamped, Twist, TwistStamped
+from geometry_msgs.msg import Pose, PoseStamped, Twist, TwistStamped, Vector3
 from moveit_msgs.action import ExecuteTrajectory, MoveGroup, MoveGroupSequence
 from moveit_msgs.msg import (
     AttachedCollisionObject,
+    BoundingVolume,
     CollisionObject,
     Constraints,
     JointConstraint,
     MotionPlanRequest,
     MotionSequenceItem,
     MoveItErrorCodes,
+    OrientationConstraint,
     PlanningOptions,
     PlanningScene,
+    PositionConstraint,
     RobotState,
     RobotTrajectory,
     WorkspaceParameters,
 )
+from std_msgs.msg import Header
 from shape_msgs.msg import SolidPrimitive
 from moveit_msgs.srv import GetCartesianPath, GetPositionIK
 from rclpy.action import ActionClient
 from rclpy.duration import Duration as RclDuration
 from rclpy.node import Node
 from rclpy.time import Time
-from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue
+from rcl_interfaces.msg import Parameter, ParameterDescriptor, ParameterType, ParameterValue
 from rcl_interfaces.srv import SetParameters
 from sensor_msgs.msg import CameraInfo, Image, JointState
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
@@ -56,6 +61,25 @@ try:
     from ultralytics import YOLO
 except ImportError:
     YOLO = None  # type: ignore[misc, assignment]
+
+from ur3_pick_task.foundation_pose_grasp import (
+    FoundationPoseStackLauncher,
+    HoverIkAttempt,
+    compute_base_tcp_pose,
+    grasp_spec_for_class,
+    grasp_spec_with_standoff,
+    merge_grasp_config,
+    is_upside_down_in_base,
+    normalize_T_base_object_for_grasp,
+    object_yaw_for_grasp,
+    object_z_tilt_from_vertical_deg,
+    run_hover_convergence_loop,
+    symmetry_axes_for_class,
+    wait_for_detection3d_output,
+    wait_for_topic_publishers,
+    wait_tf_stable,
+    yaw_about_base_z,
+)
 
 
 DEFAULT_CONFIG_FILE = (
@@ -75,6 +99,15 @@ DEFAULT_JOINT_NAMES = [
     "wrist_2_joint",
     "wrist_3_joint",
 ]
+
+# UR3 wrist_3 has no position limits (continuous rotation); real encoders accumulate 2π wraps.
+DEFAULT_CONTINUOUS_JOINT_NAMES = frozenset({"wrist_3_joint"})
+
+
+def _unwrap_joint_angle_to_current(target: float, current: float) -> float:
+    """Return the 2π-equivalent of *target* that is closest to *current*."""
+    two_pi = 2.0 * math.pi
+    return float(target) + round((float(current) - float(target)) / two_pi) * two_pi
 
 
 # Smooth Servo preset: same lateral geometry as Cartesian centering (base nudge → command frame),
@@ -140,6 +173,13 @@ def _merge_vision_config(config: Dict[str, Any]) -> Dict[str, Any]:
         "yolo_visual_center_centering_mode": "cartesian",
         "yolo_visual_center_use_moveit_ik": False,
         "yolo_moveit_one_shot_max_retries": 3,
+        # Centering IK: full step only. On fail: separate recovery move (+Z, tool +X roll) → redetect → restart centering.
+        "yolo_visual_center_ik_step_scales": [1.0],
+        "yolo_visual_center_recovery_max_sessions": 3,
+        "yolo_visual_center_recovery_lift_step_m": 0.04,
+        "yolo_visual_center_recovery_roll_step_deg": 5.0,
+        "yolo_visual_center_recovery_redetect_attempts": 40,
+        "yolo_visual_center_recovery_settle_frames": 12,
         # cartesian_then_servo: Cartesian until |Δu|+|Δv| below handoff, then smooth Servo (continuous).
         "yolo_cart_then_servo_handoff_metric_px": 92.0,
         "yolo_cart_then_servo_handoff_max_px": 200.0,
@@ -344,13 +384,57 @@ def _merge_foundation_pose_config(config: Dict[str, Any]) -> Dict[str, Any]:
         "include_grasp_prep_orientation": False,
         "grasp_prep_lookat_vector": [0.0, 0.0, -1.0],
         "grasp_prep_tcp_roll_rad": 0.0,
-        # NVIDIA docs: rotational symmetry presets per class — pass through to isaac launch manually.
-        "symmetry_axes_by_class_text": "",
+        # Isaac FoundationPose symmetry_axes (mesh frame). y_full = full rotation about mesh +Y.
+        "symmetry_axes_by_class": {
+            "Cylinder_1": ["y_full"],
+            "Cylinder_2": ["y_full"],
+            "cylinder_1": ["y_full"],
+            "cylinder_2": ["y_full"],
+            "Box_1": [],
+            "box_1": [],
+            "square_1": [],
+        },
         # Map mesh/CAD names (square_1) to YOLO class labels (Box_1).
         "yolo_class_aliases": {"square_1": "Box_1", "box_1": "Box_1"},
         "bridge_trigger_min_confidence": 0.02,
         "sync_vision_camera_topics": True,
         "use_latched_bbox_on_trigger": True,
+        # foundation_pose_grasp: auto-launch bridge + Isaac, wait for stable fp_object, MoveIt IK.
+        "auto_launch_stack": True,
+        "stack_launch_timeout_sec": 120.0,
+        "bridge_post_launch_settle_sec": 2.0,
+        "bridge_camera_warmup_timeout_sec": 12.0,
+        "bridge_set_parameters_service_wait_sec": 25.0,
+        "bridge_set_parameters_timeout_sec": 25.0,
+        "bridge_set_parameters_timeout_fresh_sec": 60.0,
+        "bridge_set_parameters_retries": 4,
+        "bridge_set_parameters_retry_pause_sec": 3.0,
+        "bridge_skip_yolo_model_path_push": True,
+        "bridge_trigger_retry_period_sec": 0.25,
+        "launch_isaac": True,
+        "stack_launch_file": "foundation_pose_stack.launch.py",
+        "grasp_config_file": "",
+        "wait_tf_stable": True,
+        "tf_stable_sample_count": 20,
+        "tf_stable_sample_period_sec": 0.12,
+        "tf_stable_max_position_std_m": 0.003,
+        "tf_stable_max_rotation_deg": 1.5,
+        "tf_stable_max_yaw_std_deg": 2.0,
+        "tf_stable_warmup_sec": 3.0,
+        "tf_stable_min_elapsed_sec": 6.0,
+        "tf_stable_timeout_sec": 45.0,
+        "fp_post_trigger_settle_sec": 4.0,
+        # MoveIt IK link for foundation_pose_grasp (default: child_frame from gripper_tip.yaml).
+        "ik_link_name": "",
+        # Two-stage grasp: hover (large standoff) then Cartesian plunge (minimal standoff).
+        "hover_approach_standoff_m": 0.12,
+        "touch_approach_standoff_m": 0.01,
+        "hover_ik_step_scales": [1.0, 0.5, 0.25],
+        "hover_convergence_max_iterations": 5,
+        "hover_convergence_settle_sec": 0.12,
+        "plunge_min_fraction": 1.0,
+        "plunge_max_step_m": 0.002,
+        "plunge_cartesian_mode": "linear",
     }
     blk = config.get("foundation_pose")
     if isinstance(blk, dict):
@@ -360,6 +444,36 @@ def _merge_foundation_pose_config(config: Dict[str, Any]) -> Dict[str, Any]:
             mm = dict(defaults["mesh_relative_by_class"])  # type: ignore[list-item]
             mm.update(dict(blk["mesh_relative_by_class"]))
             merged["mesh_relative_by_class"] = mm
+        if isinstance(blk.get("symmetry_axes_by_class"), dict):
+            sm = dict(defaults["symmetry_axes_by_class"])  # type: ignore[list-item]
+            sm.update(dict(blk["symmetry_axes_by_class"]))
+            merged["symmetry_axes_by_class"] = sm
+        return merged
+    return dict(defaults)
+
+
+def _merge_gripper_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    defaults: Dict[str, Any] = {
+        "hybrid_close_service": "/mujoco/gripper/hybrid_close",
+        "hybrid_open_service": "/mujoco/gripper/hybrid_open",
+        "set_parameters_service": "/mujoco_node/set_parameters",
+        "close_position_rad": 1.396,
+        "hold_torque_nm": 2.5,
+        "approach_ramp_rad_s": 0.35,
+        "min_feedback_torque_nm": 2.0,
+        "max_joint_speed_rad_s": 0.15,
+        "contact_confirm_steps": 5,
+        "hold_sec": 2.0,
+        "timeout_sec": 45.0,
+        "position_kp": 500.0,
+        "position_kv": 30.0,
+        "service_wait_timeout_sec": 10.0,
+        "service_call_timeout_sec": 60.0,
+    }
+    blk = config.get("gripper")
+    if isinstance(blk, dict):
+        merged = dict(defaults)
+        merged.update(blk)
         return merged
     return dict(defaults)
 
@@ -442,8 +556,7 @@ def _ultralytics_pick_bbox_xyxy_and_conf(
 
     if best_box is None or best_conf < min_conf:
         return None
-    bb = np.asarray(best_box, dtype=np.float64).reshape(-1)
-    return bb.astype(np.float64).copy(), float(best_conf), str(win_label)
+    return best_box, best_conf, win_label
 
 
 class _YoloDetectionTrack:
@@ -629,6 +742,10 @@ def _duration_from_seconds(seconds: float) -> DurationMsg:
     seconds = max(float(seconds), 0.0)
     sec = int(seconds)
     return DurationMsg(sec=sec, nanosec=int((seconds - sec) * 1e9))
+
+
+def _duration_to_seconds(duration: DurationMsg) -> float:
+    return float(duration.sec) + float(duration.nanosec) * 1e-9
 
 
 def _quat_from_rpy(roll: float, pitch: float, yaw: float) -> np.ndarray:
@@ -873,6 +990,8 @@ class MotionManager(Node):
         self.declare_parameter("continue_on_failure", False)
         self.declare_parameter("stop_sequence_service", "~/stop_sequence")
         self.declare_parameter("publish_action_completed_topic", "")
+        self.declare_parameter("speed_scale", 1.0, ParameterDescriptor(dynamic_typing=True))
+        self.declare_parameter("robot_backend", "", ParameterDescriptor(dynamic_typing=True))
 
         self.config_file = str(self.get_parameter("config_file").value)
         self.sequence_name = str(self.get_parameter("sequence_name").value)
@@ -884,15 +1003,47 @@ class MotionManager(Node):
         self.sequence_names = self._select_sequence_names(self.config, self.sequence_name)
         self.sequence_name = " -> ".join(self.sequence_names)
         self.motion_cfg = self._load_motion_config(self.config)
+        backend_param = str(self.get_parameter("robot_backend").value or "").strip().lower()
+        self.robot_backend = backend_param or str(self.motion_cfg.get("robot_backend", "sim")).strip().lower()
+        if self.robot_backend not in {"sim", "real"}:
+            raise ValueError("robot_backend must be 'sim' or 'real'")
+        self.get_logger().info(f"Robot backend: {self.robot_backend}")
+        speed_param = self.get_parameter("speed_scale").value
+        motion_speed = self.motion_cfg.get("speed_scale", 1.0)
+        self.speed_scale = self._normalize_speed_scale(
+            speed_param if speed_param is not None else motion_speed
+        )
+        self.get_logger().info(
+            f"Sequence speed_scale={self.speed_scale:.3f} "
+            "(multiplies normal axis-position moves only; YOLO, FoundationPose, and gripper keep YAML speeds)."
+        )
         self._forbidden_zone_presets = MotionManager._load_named_preset_map(self.config, "forbidden_zone_presets")
         self._planning_attach_presets = MotionManager._load_named_preset_map(self.config, "planning_attach_presets")
         self._planning_detach_presets = MotionManager._load_named_preset_map(self.config, "planning_detach_presets")
         self._mujoco_weld_presets = MotionManager._load_named_preset_map(self.config, "mujoco_weld_presets")
         self.sequence = self._load_sequences(self.config, self.sequence_names)
         self.joint_names = [str(name) for name in self.motion_cfg.get("joint_names", DEFAULT_JOINT_NAMES)]
-        self.tool_to_tcp = _transform_from_yaml(_load_yaml(str(self.motion_cfg["tcp_file"])))
+        tcp_yaml = _load_yaml(str(self.motion_cfg["tcp_file"]))
+        self.tool_to_tcp = _transform_from_yaml(tcp_yaml)
+        self.tcp_frame_name = str(tcp_yaml.get("child_frame", "gripper_tip")).strip() or "gripper_tip"
         self.vision_cfg = _merge_vision_config(self.config)
+        if self.robot_backend == "real":
+            self.motion_cfg.setdefault("avoid_collisions", True)
+            self.get_logger().info("Real backend: MoveIt avoid_collisions=true for all planning.")
+            self.motion_cfg.setdefault("real_cartesian_retime_min_segment_sec", 0.08)
+            self.motion_cfg.setdefault("real_cartesian_retime_duration_stretch", 2.0)
+            self.motion_cfg.setdefault("cartesian_retime_max_joint_vel_rad_s", 0.35)
+            real_vision = self.config.get("real_vision")
+            if isinstance(real_vision, dict):
+                self.vision_cfg.update(real_vision)
+            self.get_logger().info(
+                "Real vision topics: "
+                f"rgb={self.vision_cfg.get('rgb_topic')}, "
+                f"depth={self.vision_cfg.get('depth_topic')}, "
+                f"camera_info={self.vision_cfg.get('camera_info_topic')}"
+            )
         self.foundation_pose_cfg = _merge_foundation_pose_config(self.config)
+        self.gripper_cfg = _merge_gripper_config(self.config)
         self._latest_joint_state: Optional[JointState] = None
         self._vis_lock = threading.Lock()
         self._vis_bgr: Optional[np.ndarray] = None
@@ -910,6 +1061,9 @@ class MotionManager(Node):
         self._fp_last_bbox_xyxy: Optional[tuple[float, float, float, float]] = None
         self._fp_last_detection_label: str = ""
         self._fp_last_z_ray_m: float = 0.0
+        self._fp_stack = FoundationPoseStackLauncher(self.get_logger())
+        self._grasp_by_class_cache: Dict[str, Any] = {}
+        self._grasp_by_class_cache_key: str = ""
 
         self.create_subscription(JointState, "/joint_states", self._on_joint_states, 10)
         self._ik_client = self.create_client(GetPositionIK, "/compute_ik")
@@ -1024,6 +1178,22 @@ class MotionManager(Node):
             self._raise_if_abort()
             rclpy.spin_once(self, timeout_sec=min(0.05, end - time.monotonic()))
 
+    def cleanup(self) -> None:
+        listener = getattr(self, "_tf_listener", None)
+        if listener is None:
+            return
+        executor = getattr(listener, "executor", None)
+        if executor is not None:
+            executor.shutdown()
+        thread = getattr(listener, "dedicated_listener_thread", None)
+        if thread is not None:
+            thread.join(timeout=2.0)
+        try:
+            listener.unregister()
+        except Exception:  # noqa: BLE001 - best effort during shutdown.
+            pass
+        self._tf_listener = None
+
     def _on_joint_states(self, msg: JointState) -> None:
         if msg.name and msg.position:
             self._latest_joint_state = msg
@@ -1044,9 +1214,14 @@ class MotionManager(Node):
 
     def _on_vision_depth(self, msg: Image) -> None:
         try:
-            if msg.encoding != "32FC1":
+            if msg.encoding == "32FC1":
+                d = np.frombuffer(msg.data, dtype=np.float32).reshape((msg.height, msg.width))
+            elif msg.encoding == "16UC1":
+                # RealSense aligned depth (millimeters → meters).
+                raw = np.frombuffer(msg.data, dtype=np.uint16).reshape((msg.height, msg.width))
+                d = raw.astype(np.float32) * 0.001
+            else:
                 return
-            d = np.frombuffer(msg.data, dtype=np.float32).reshape((msg.height, msg.width))
             with self._vis_lock:
                 self._vis_depth = d.copy()
         except Exception:
@@ -1167,6 +1342,100 @@ class MotionManager(Node):
             return None
         return os.path.join(share, rel_s)
 
+    def _foundation_pose_texture_path_for_mesh(self, mesh_path: Optional[str]) -> Optional[str]:
+        if not mesh_path:
+            return None
+        base, _ext = os.path.splitext(mesh_path)
+        for name in (f"{base}_texture.jpg", f"{base}_texture.png"):
+            if os.path.isfile(name):
+                return name
+        return None
+
+    def _foundation_pose_camera_optical_frame(self, fp_cfg: Dict[str, Any]) -> str:
+        return str(
+            fp_cfg.get("camera_optical_frame")
+            or self.vision_cfg.get("yolo_servo_command_frame")
+            or "camera_color_optical_frame"
+        ).strip()
+
+    def _foundation_pose_use_sim_time(self) -> bool:
+        if self.robot_backend == "real":
+            return False
+        try:
+            return bool(self.get_parameter("use_sim_time").value)
+        except Exception:  # noqa: BLE001
+            return True
+
+    def _foundation_pose_stack_launch_file(self, fp_cfg: Dict[str, Any]) -> Optional[str]:
+        name = str(fp_cfg.get("stack_launch_file", "")).strip()
+        return name or None
+
+    def _foundation_pose_ensure_stack_running(
+        self,
+        cfg_fp: Dict[str, Any],
+        tgt: str,
+        *,
+        force_relaunch: bool = False,
+        tf_upright_in_base: Optional[bool] = None,
+        tf_long_axis_in_object: Optional[Sequence[float]] = None,
+    ) -> bool:
+        if not bool(cfg_fp.get("auto_launch_stack", True)):
+            return True
+        trig = str(cfg_fp.get("bridge_trigger_service", "/foundation_pose_bridge/trigger")).strip()
+        set_params = str(cfg_fp.get("bridge_set_parameters_service", "")).strip()
+        ref = str(cfg_fp.get("tf_reference_frame", "base_link")).strip()
+        mesh_path = self._foundation_pose_mesh_path_for_class(tgt)
+        texture_path = self._foundation_pose_texture_path_for_mesh(mesh_path)
+        symmetry_axes = symmetry_axes_for_class(tgt, cfg_fp)
+        ok = self._fp_stack.ensure_running(
+            self,
+            bridge_trigger=trig,
+            bridge_set_params=set_params,
+            use_sim_time=self._foundation_pose_use_sim_time(),
+            stack_launch_file=self._foundation_pose_stack_launch_file(cfg_fp),
+            launch_timeout_sec=float(cfg_fp.get("stack_launch_timeout_sec", 120.0)),
+            spin_cb=self._spin_cb,
+            mesh_file_path=mesh_path,
+            texture_file_path=texture_path,
+            symmetry_axes=symmetry_axes,
+            tf_reference_frame=ref,
+            tf_upright_in_base=tf_upright_in_base,
+            tf_long_axis_in_object=tf_long_axis_in_object,
+            force_relaunch=force_relaunch,
+            isaac_rgb_topic=str(cfg_fp.get("isaac_rgb_rect_topic", "/rgb/image_rect_color")),
+            isaac_pipeline_ready_timeout_sec=float(
+                cfg_fp.get("isaac_pipeline_ready_timeout_sec", 90.0)
+            ),
+        )
+        if not ok:
+            stack_file = self._foundation_pose_stack_launch_file(cfg_fp) or "foundation_pose_stack.launch.py"
+            self.get_logger().error(
+                f"foundation_pose: stack launch failed ({stack_file}) — "
+                "Real robot needs RealSense running + Isaac env "
+                "(~/isaac_ros_assets/setup_foundationpose_env.sh). "
+                "See ~/.ros/log/foundation_pose_stack_latest.log"
+            )
+        return ok
+
+    def _lookup_fp_object_mat_in_base(
+        self,
+        ref: str,
+        child: str,
+        *,
+        optical_frame: str,
+        lookup_timeout_sec: float = 0.25,
+        log_error: bool = False,
+    ) -> Optional[np.ndarray]:
+        """Resolve object pose in base: direct TF or base←camera←fp_object chain."""
+        mat = self._lookup_tf_mat(ref, child, lookup_timeout_sec, log_error=log_error)
+        if mat is not None:
+            return mat
+        t_bo = self._lookup_tf_mat(ref, optical_frame, lookup_timeout_sec, log_error=log_error)
+        t_oc = self._lookup_tf_mat(optical_frame, child, lookup_timeout_sec, log_error=log_error)
+        if t_bo is not None and t_oc is not None:
+            return t_bo @ t_oc
+        return None
+
     def _foundation_pose_set_parameters_client(self, service_name: str) -> Any:
         svc = str(service_name).strip()
         if svc not in self._foundation_pose_param_clients:
@@ -1191,7 +1460,11 @@ class MotionManager(Node):
         return key
 
     def _foundation_pose_bridge_push_detection_params(
-        self, fp_cfg: Dict[str, Any], target_class: str
+        self,
+        fp_cfg: Dict[str, Any],
+        target_class: str,
+        *,
+        cold_stack: bool = False,
     ) -> bool:
         """Tell foundation_pose_bridge YOLO filter + confidence so Trigger matches centered object."""
         svc = str(fp_cfg.get("bridge_set_parameters_service", "")).strip()
@@ -1210,6 +1483,11 @@ class MotionManager(Node):
         )
         ex_raw = fp_cfg.get("yolo_exclusive_scene_classes", self.vision_cfg.get("yolo_exclusive_scene_classes"))
         ex_list = [str(x).strip() for x in ex_raw] if isinstance(ex_raw, (list, tuple)) else []
+        # Never let bridge YOLO compete across classes (e.g. pick Box_1 when user chose Cylinder_1).
+        if not ex_list:
+            ex_list = [yolo_class]
+        elif yolo_class not in ex_list and yolo_class.lower() not in {x.lower() for x in ex_list}:
+            ex_list = [yolo_class] + ex_list
 
         plist: list[Parameter] = []
         pv_tc = ParameterValue()
@@ -1223,7 +1501,7 @@ class MotionManager(Node):
         plist.append(Parameter(name="min_confidence", value=pv_cf))
 
         yolo_path = str(self.vision_cfg.get("yolo_model_path", "")).strip()
-        if yolo_path:
+        if yolo_path and not bool(fp_cfg.get("bridge_skip_yolo_model_path_push", True)):
             pv_ym = ParameterValue()
             pv_ym.type = ParameterType.PARAMETER_STRING
             pv_ym.string_value = yolo_path
@@ -1255,6 +1533,7 @@ class MotionManager(Node):
             plist.append(Parameter(name="yolo_exclusive_scene_classes", value=pv_sa))
 
         use_latch = bool(fp_cfg.get("use_latched_bbox_on_trigger", True))
+        latch_lbl = yolo_class
         pv_ul = ParameterValue()
         pv_ul.type = ParameterType.PARAMETER_BOOL
         pv_ul.bool_value = use_latch
@@ -1267,32 +1546,74 @@ class MotionManager(Node):
             plist.append(Parameter(name="latched_bbox_xyxy", value=pv_bb))
             pv_lbl = ParameterValue()
             pv_lbl.type = ParameterType.PARAMETER_STRING
-            pv_lbl.string_value = str(self._fp_last_detection_label or yolo_class)
+            latch_lbl = str(self._fp_last_detection_label or yolo_class).strip()
+            if latch_lbl.lower() != yolo_class.lower():
+                self.get_logger().warn(
+                    f"foundation_pose: latched YOLO label {latch_lbl!r} != target {yolo_class!r}; "
+                    f"forcing latched_bbox_label={yolo_class!r} for bridge/Isaac."
+                )
+                latch_lbl = yolo_class
+            pv_lbl.string_value = latch_lbl
             plist.append(Parameter(name="latched_bbox_label", value=pv_lbl))
 
         cli = self._foundation_pose_set_parameters_client(svc)
-        if not self._wait_for_service_abortable(cli, 8.0):
+        wait_svc = float(fp_cfg.get("bridge_set_parameters_service_wait_sec", 20.0))
+        if not self._wait_for_service_abortable(cli, wait_svc):
             self.get_logger().error(f"foundation_pose: SetParameters service not ready: {svc}")
             return False
-        future = cli.call_async(SetParameters.Request(parameters=plist))
-        self._spin_until_future_complete_abortable(future, 12.0)
-        if not future.done():
-            self.get_logger().error(f"foundation_pose: SetParameters timed out ({svc}).")
-            return False
-        res = future.result()
-        if res is None:
-            return False
-        for r in getattr(res, "results", []) or []:
-            if hasattr(r, "successful") and not bool(r.successful):
-                msg = getattr(r, "reason", "")
-                self.get_logger().error(f"foundation_pose: parameter rejected ({svc}): {msg}")
+
+        call_timeout = float(
+            fp_cfg.get(
+                "bridge_set_parameters_timeout_fresh_sec" if cold_stack else "bridge_set_parameters_timeout_sec",
+                60.0 if cold_stack else 20.0,
+            )
+        )
+        retries = max(1, int(fp_cfg.get("bridge_set_parameters_retries", 3)))
+        retry_pause = float(fp_cfg.get("bridge_set_parameters_retry_pause_sec", 2.0))
+
+        for attempt in range(1, retries + 1):
+            if not cli.service_is_ready():
+                if not self._wait_for_service_abortable(cli, wait_svc):
+                    self.get_logger().error(f"foundation_pose: SetParameters service not ready: {svc}")
+                    return False
+            future = cli.call_async(SetParameters.Request(parameters=plist))
+            self._spin_until_future_complete_abortable(future, call_timeout)
+            if not future.done():
+                self.get_logger().warn(
+                    f"foundation_pose: SetParameters attempt {attempt}/{retries} timed out "
+                    f"({call_timeout:.0f}s on {svc})."
+                )
+                if attempt < retries:
+                    self._spin_cb(retry_pause)
+                    continue
+                self.get_logger().error(
+                    f"foundation_pose: SetParameters failed after {retries} attempt(s) ({svc}). "
+                    "Bridge may still be loading YOLO/Isaac — try pkill -f foundation_pose_stack."
+                )
                 return False
+            res = future.result()
+            if res is None:
+                if attempt < retries:
+                    self._spin_cb(retry_pause)
+                    continue
+                return False
+            rejected = False
+            for r in getattr(res, "results", []) or []:
+                if hasattr(r, "successful") and not bool(r.successful):
+                    msg = getattr(r, "reason", "")
+                    self.get_logger().error(f"foundation_pose: parameter rejected ({svc}): {msg}")
+                    rejected = True
+            if rejected:
+                return False
+            break
         latch_note = ""
         if use_latch and self._fp_last_bbox_xyxy is not None:
-            latch_note = f", latched_bbox={self._fp_last_bbox_xyxy}"
+            latch_note = (
+                f", latched_bbox={self._fp_last_bbox_xyxy}, latched_label={latch_lbl!r}"
+            )
         self.get_logger().info(
             f"foundation_pose: bridge params → target_class={yolo_class!r} "
-            f"(requested {target_class!r}), min_confidence={min_conf:.3f}{latch_note}"
+            f"(requested {target_class!r}), exclusive={ex_list!r}, min_confidence={min_conf:.3f}{latch_note}"
         )
         return True
 
@@ -1301,29 +1622,535 @@ class MotionManager(Node):
         *,
         fp_cfg: Dict[str, Any],
         timeout_sec: float,
+        trig_action: Optional[Dict[str, Any]] = None,
+        bridge_trigger_service: str = "",
     ) -> bool:
         ref = str(fp_cfg.get("tf_reference_frame") or self.motion_cfg.get("base_link", "base_link")).strip()
         child = str(fp_cfg.get("object_tf_child_frame", "fp_object")).strip()
+        optical = self._foundation_pose_camera_optical_frame(fp_cfg)
+        output_topic = str(fp_cfg.get("isaac_output_topic", "/output")).strip()
+        retrigger_period = float(fp_cfg.get("bridge_retrigger_period_sec", 8.0))
         deadline = time.monotonic() + max(0.1, float(timeout_sec))
         period = float(fp_cfg.get("tf_spin_period_sec", 0.03))
+        last_retrigger = time.monotonic()
+        saw_output = False
+        from vision_msgs.msg import Detection3DArray
+
+        def _on_output(msg: Detection3DArray) -> None:
+            nonlocal saw_output
+            if len(msg.detections) > 0:
+                saw_output = True
+
+        out_sub = self.create_subscription(Detection3DArray, output_topic, _on_output, 10)
         self.get_logger().info(
-            f"foundation_pose: waiting for TF {ref} <- {child} (timeout={timeout_sec:.1f}s) — "
-            "Isaac FoundationPose stack must be running."
+            f"foundation_pose: waiting for pose pipeline (TF {ref} <- {child} or via {optical!r}, "
+            f"/output on {output_topic!r}, timeout={timeout_sec:.1f}s)."
         )
-        while time.monotonic() < deadline and rclpy.ok():
-            self._raise_if_abort()
-            try:
-                self._tf_buffer.lookup_transform(ref, child, Time(), timeout=RclDuration(seconds=0.25))
-                self.get_logger().info(f"foundation_pose: TF {ref} <- {child} available.")
-                return True
-            except Exception:  # noqa: BLE001 — wait until timeout.
-                pass
-            rclpy.spin_once(self, timeout_sec=period)
-        self.get_logger().error(
-            f"foundation_pose: timed out waiting for TF {ref} <- {child}. "
-            "Start Isaac isaac_ros_foundationpose + remaps per launch/isaac_foundation_pose_rlcamera.launch.py."
+        try:
+            while time.monotonic() < deadline and rclpy.ok():
+                self._raise_if_abort()
+                fp_mat = self._lookup_fp_object_mat_in_base(
+                    ref, child, optical_frame=optical, lookup_timeout_sec=0.2
+                )
+                if fp_mat is not None:
+                    self.get_logger().info(f"foundation_pose: object pose available in {ref!r}.")
+                    return True
+                if saw_output:
+                    self.get_logger().info(
+                        f"foundation_pose: Isaac publishing {output_topic!r}; waiting for TF…",
+                        throttle_duration_sec=15.0,
+                    )
+                if (
+                    trig_action is not None
+                    and bridge_trigger_service
+                    and (time.monotonic() - last_retrigger) >= retrigger_period
+                ):
+                    self.get_logger().info("foundation_pose: re-triggering bridge (waiting for Isaac pose)…")
+                    self._foundation_pose_bridge_trigger_with_warmup(
+                        trig_action, fp_cfg, bridge_trigger_service
+                    )
+                    last_retrigger = time.monotonic()
+                rclpy.spin_once(self, timeout_sec=period)
+        finally:
+            self.destroy_subscription(out_sub)
+        hint = (
+            f"timed out waiting for TF {ref} <- {child} (and {optical!r} <- {child}). "
+            "Check Isaac GPU/TensorRT, mesh matches target class, and /output publishes."
         )
+        if not saw_output:
+            hint += f" No messages on {output_topic!r} — Isaac may still be loading engines or mesh is wrong."
+        self.get_logger().error(f"foundation_pose: {hint}")
         return False
+
+    def _spin_cb(self, timeout_sec: float) -> None:
+        rclpy.spin_once(self, timeout_sec=float(timeout_sec))
+
+    def _foundation_pose_grasp_config_path(self, fp_cfg: Dict[str, Any]) -> str:
+        explicit = os.path.expanduser(str(fp_cfg.get("grasp_config_file", "")).strip())
+        if explicit:
+            return explicit
+        try:
+            share = get_package_share_directory("ur3_pick_task")
+            candidate = os.path.join(share, "config", "foundation_pose_grasp.yaml")
+            if os.path.isfile(candidate):
+                return candidate
+        except PackageNotFoundError:
+            pass
+        dev = Path(__file__).resolve().parents[1] / "config" / "foundation_pose_grasp.yaml"
+        return str(dev)
+
+    def _load_grasp_by_class(self, fp_cfg: Dict[str, Any]) -> Dict[str, Any]:
+        path = self._foundation_pose_grasp_config_path(fp_cfg)
+        if self._grasp_by_class_cache_key == path and self._grasp_by_class_cache:
+            return self._grasp_by_class_cache
+        merged = merge_grasp_config(fp_cfg, grasp_config_file=path)
+        self._grasp_by_class_cache_key = path
+        self._grasp_by_class_cache = merged
+        return merged
+
+    def _foundation_pose_object_translation_quat(
+        self,
+        ref: str,
+        child: str,
+        timeout_sec: float,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        optical = self._foundation_pose_camera_optical_frame(self.foundation_pose_cfg)
+        mat = self._lookup_fp_object_mat_in_base(ref, child, optical_frame=optical, lookup_timeout_sec=timeout_sec)
+        if mat is None:
+            raise RuntimeError(f"TF {ref} <- {child} unavailable")
+        return mat[:3, 3].copy(), _rot_to_quat(mat[:3, :3])
+
+    def _execute_foundation_pose_grasp_action(self, action: Dict[str, Any]) -> bool:
+        """
+        Auto-launch FoundationPose stack (bridge + YOLO + Isaac), wait for stable fp_object,
+        apply per-class grasp offsets/axis alignment, MoveIt IK to gripper_tip (TCP).
+        """
+        cfg_fp = dict(self.foundation_pose_cfg)
+        if isinstance(action.get("foundation_pose"), dict):
+            cfg_fp.update(dict(action["foundation_pose"]))
+        for top_key in (
+            "auto_launch_stack",
+            "stack_launch_timeout_sec",
+            "wait_tf_timeout_sec",
+            "wait_tf_stable",
+            "tf_stable_sample_count",
+            "tf_stable_max_position_std_m",
+            "tf_stable_max_rotation_deg",
+            "tf_stable_timeout_sec",
+            "yolo_exclusive_scene_classes",
+            "bridge_trigger_min_confidence",
+            "use_latched_bbox_on_trigger",
+        ):
+            if top_key in action:
+                cfg_fp[top_key] = action[top_key]
+
+        tgt_raw = str(action.get("target_class") or "").strip()
+        if not tgt_raw:
+            tgt_raw = str(self.object_name or "").strip()
+        if not tgt_raw:
+            tgt_raw = str(self.vision_cfg.get("default_target_class", "") or "").strip()
+        if not tgt_raw:
+            self.get_logger().error(
+                "foundation_pose_grasp: missing target_class (action, object_name, or vision.default_target_class)."
+            )
+            return False
+        tgt = self._foundation_pose_resolve_target_class(tgt_raw, cfg_fp)
+
+        trig = str(cfg_fp.get("bridge_trigger_service", "/foundation_pose_bridge/trigger")).strip()
+        set_params = str(cfg_fp.get("bridge_set_parameters_service", "")).strip()
+        tf_timeout = float(action.get("wait_tf_timeout_sec", cfg_fp.get("wait_tf_timeout_sec", 45.0)))
+        ref = str(cfg_fp.get("tf_reference_frame", "base_link")).strip()
+        child = str(cfg_fp.get("object_tf_child_frame", "fp_object")).strip()
+
+        mesh_path = self._foundation_pose_mesh_path_for_class(tgt)
+        texture_path = self._foundation_pose_texture_path_for_mesh(mesh_path)
+        symmetry_axes = symmetry_axes_for_class(tgt, cfg_fp)
+        try:
+            grasp_by_class = self._load_grasp_by_class(cfg_fp)
+            grasp_spec_pre = grasp_spec_for_class(grasp_by_class, tgt)
+            if isinstance(action.get("grasp"), dict):
+                grasp_spec_pre = dict(grasp_spec_pre)
+                grasp_spec_pre.update(dict(action["grasp"]))
+        except ValueError:
+            grasp_spec_pre = {}
+        tf_long_axis = grasp_spec_pre.get("long_axis_in_object")
+        tf_upright = bool(
+            grasp_spec_pre.get("upright_in_base", grasp_spec_pre.get("upright_z_in_base", False))
+        )
+        if mesh_path:
+            self.get_logger().info(
+                f"foundation_pose_grasp: Isaac mesh {mesh_path!r}"
+                + (f" texture {texture_path!r}" if texture_path else "")
+                + f" symmetry_axes={symmetry_axes}"
+            )
+        else:
+            self.get_logger().warn(
+                f"foundation_pose_grasp: no mesh path for class {tgt!r}; Isaac may use default FOUNDATION_POSE_MESH."
+            )
+
+        if bool(cfg_fp.get("auto_launch_stack", True)):
+            long_axis_arg = tf_long_axis if tf_long_axis is not None and len(tf_long_axis) == 3 else None
+            if not self._foundation_pose_ensure_stack_running(
+                cfg_fp,
+                tgt,
+                force_relaunch=bool(cfg_fp.get("force_relaunch_stack_on_grasp", True)),
+                tf_upright_in_base=tf_upright,
+                tf_long_axis_in_object=long_axis_arg,
+            ):
+                return False
+
+        self._ensure_vision_subscriptions_for_yolo()
+
+        trig_action = dict(action)
+        trig_action["service_name"] = trig
+        trig_action.setdefault("wait_timeout_sec", 8.0)
+        trig_action.setdefault("call_timeout_sec", 25.0)
+        self._foundation_pose_post_stack_settle(cfg_fp, action)
+        if getattr(self._fp_stack, "started_fresh", True):
+            isaac_settle = float(cfg_fp.get("isaac_post_launch_settle_sec", 15.0))
+        else:
+            isaac_settle = float(cfg_fp.get("isaac_post_launch_settle_if_reused_sec", 0.0))
+        if isaac_settle > 0.0:
+            self.get_logger().info(
+                f"foundation_pose_grasp: settling {isaac_settle:.0f}s "
+                f"({'cold stack' if getattr(self._fp_stack, 'started_fresh', True) else 'stack reused'})…"
+            )
+            settle_end = time.monotonic() + isaac_settle
+            while time.monotonic() < settle_end and rclpy.ok():
+                self._raise_if_abort()
+                self._spin_cb(0.1)
+
+        if not self._foundation_pose_bridge_push_detection_params(
+            cfg_fp,
+            tgt,
+            cold_stack=bool(getattr(self._fp_stack, "started_fresh", True)),
+        ):
+            return False
+
+        if not self._foundation_pose_bridge_trigger_with_warmup(trig_action, cfg_fp, trig):
+            self.get_logger().error(f"foundation_pose_grasp: bridge Trigger failed ({trig}).")
+            return False
+
+        post_trig = float(
+            action.get("fp_post_trigger_settle_sec", cfg_fp.get("fp_post_trigger_settle_sec", 4.0))
+        )
+        if post_trig > 0.0:
+            self.get_logger().info(
+                f"foundation_pose_grasp: post-trigger settle {post_trig:.1f}s "
+                "(FoundationPose refine before pose lock)…"
+            )
+            end = time.monotonic() + post_trig
+            while time.monotonic() < end and rclpy.ok():
+                self._raise_if_abort()
+                self._spin_cb(0.1)
+
+        rgb_rect = str(cfg_fp.get("isaac_rgb_rect_topic", "/rgb/image_rect_color")).strip()
+        depth_rect = str(cfg_fp.get("isaac_depth_rect_topic", "/depth_registered/image_rect")).strip()
+        isaac_input_wait = float(cfg_fp.get("isaac_input_topics_timeout_sec", 20.0))
+        if isaac_input_wait > 0.0:
+            if not wait_for_topic_publishers(
+                self, rgb_rect, timeout_sec=isaac_input_wait, spin_cb=self._spin_cb
+            ):
+                self.get_logger().error(
+                    f"foundation_pose_grasp: Isaac RGB bridge not publishing {rgb_rect!r} — "
+                    "never reached TF wait (fp_object needs Isaac /output). "
+                    f"Ensure RealSense or sim camera is running (backend={self.robot_backend!r}). "
+                    "Stale stack: pkill -f foundation_pose_stack then retry. "
+                    "See ~/.ros/log/foundation_pose_stack_latest.log"
+                )
+                tail = self._fp_stack.log_tail()
+                if tail:
+                    self.get_logger().error(f"FoundationPose stack log (tail):\n{tail}")
+                return False
+            if not wait_for_topic_publishers(
+                self, depth_rect, timeout_sec=isaac_input_wait, spin_cb=self._spin_cb
+            ):
+                self.get_logger().warn(
+                    f"foundation_pose_grasp: {depth_rect!r} not publishing yet; continuing…"
+                )
+
+        output_topic = str(cfg_fp.get("isaac_output_topic", "/output")).strip()
+        fresh = bool(getattr(self._fp_stack, "started_fresh", True))
+        output_wait = float(
+            cfg_fp.get(
+                "isaac_output_wait_timeout_sec",
+                90.0 if fresh else 25.0,
+            )
+        )
+        if output_wait > 0.0:
+            self.get_logger().info(
+                f"foundation_pose_grasp: waiting up to {output_wait:.0f}s for Isaac {output_topic!r} "
+                f"(mesh={mesh_path or 'default'!r})…"
+            )
+            if not wait_for_detection3d_output(
+                self,
+                topic=output_topic,
+                timeout_sec=output_wait,
+                spin_cb=self._spin_cb,
+            ):
+                tail = self._fp_stack.log_tail()
+                self.get_logger().error(
+                    f"foundation_pose_grasp: Isaac never published {output_topic!r} "
+                    f"(waited {output_wait:.0f}s). "
+                    "Isaac composable may still be loading TensorRT, or camera/detection sync failed. "
+                    "See ~/.ros/log/foundation_pose_stack_latest.log"
+                )
+                if tail:
+                    self.get_logger().error(f"FoundationPose stack log (tail):\n{tail}")
+                return False
+
+        if not self._foundation_pose_wait_tf_object(
+            fp_cfg=cfg_fp,
+            timeout_sec=tf_timeout,
+            trig_action=trig_action,
+            bridge_trigger_service=trig,
+        ):
+            return False
+
+        if bool(cfg_fp.get("wait_tf_stable", True)):
+            stable_timeout = float(
+                action.get("tf_stable_timeout_sec", cfg_fp.get("tf_stable_timeout_sec", tf_timeout))
+            )
+            ok, msg = wait_tf_stable(
+                lambda: self._foundation_pose_object_translation_quat(ref, child, 1.0),
+                sample_count=int(cfg_fp.get("tf_stable_sample_count", 12)),
+                sample_period_sec=float(cfg_fp.get("tf_stable_sample_period_sec", 0.08)),
+                max_position_std_m=float(cfg_fp.get("tf_stable_max_position_std_m", 0.003)),
+                max_rotation_deg=float(cfg_fp.get("tf_stable_max_rotation_deg", 1.5)),
+                max_yaw_std_deg=float(cfg_fp.get("tf_stable_max_yaw_std_deg", 2.0)),
+                warmup_sec=float(
+                    action.get("tf_stable_warmup_sec", cfg_fp.get("tf_stable_warmup_sec", 3.0))
+                ),
+                min_elapsed_sec=float(
+                    action.get("tf_stable_min_elapsed_sec", cfg_fp.get("tf_stable_min_elapsed_sec", 6.0))
+                ),
+                timeout_sec=stable_timeout,
+                spin_cb=self._spin_cb,
+            )
+            if not ok:
+                self.get_logger().error(f"foundation_pose_grasp: pose not stable — {msg}")
+                return False
+            self.get_logger().info(f"foundation_pose_grasp: fp_object locked — {msg}")
+
+        try:
+            grasp_by_class = self._load_grasp_by_class(cfg_fp)
+            grasp_spec = grasp_spec_for_class(grasp_by_class, tgt)
+            if isinstance(action.get("grasp"), dict):
+                grasp_spec.update(dict(action["grasp"]))
+        except ValueError as exc:
+            self.get_logger().error(f"foundation_pose_grasp: {exc}")
+            return False
+
+        optical = self._foundation_pose_camera_optical_frame(cfg_fp)
+        T_base_object = self._lookup_fp_object_mat_in_base(
+            ref, child, optical_frame=optical, lookup_timeout_sec=tf_timeout, log_error=True
+        )
+        if T_base_object is None:
+            self.get_logger().error(f"foundation_pose_grasp: could not resolve {ref} <- {child} for MoveIt.")
+            return False
+
+        R_raw = T_base_object[:3, :3].copy()
+        tilt_raw = object_z_tilt_from_vertical_deg(R_raw)
+        fp_inverted = is_upside_down_in_base(R_raw)
+        T_base_object = normalize_T_base_object_for_grasp(T_base_object, grasp_spec)
+        if bool(grasp_spec.get("upright_in_base", grasp_spec.get("upright_z_in_base", False))):
+            tilt_up = object_z_tilt_from_vertical_deg(T_base_object[:3, :3])
+            self.get_logger().info(
+                f"foundation_pose_grasp: upright_in_base — object Z tilt "
+                f"{tilt_raw:.2f}° → {tilt_up:.2f}° "
+                f"(yaw={math.degrees(object_yaw_for_grasp(T_base_object[:3, :3], grasp_spec)):.1f}°, "
+                f"fp_inverted={fp_inverted})"
+            )
+
+        if not self._foundation_pose_execute_two_stage_grasp(
+            action, cfg_fp, T_base_object, grasp_spec, tgt
+        ):
+            return False
+        return True
+
+    def _foundation_pose_log_tcp_goals(
+        self,
+        grasp_spec: Dict[str, Any],
+        tgt: str,
+        tcp_link: str,
+        pose_hover: Pose,
+        pose_touch: Pose,
+        hover_standoff: float,
+        touch_standoff: float,
+        T_base_object: np.ndarray,
+    ) -> None:
+        offset = grasp_spec.get(
+            "grip_point_offset_m",
+            grasp_spec.get("position_offset_m", [0, 0, 0]),
+        )
+        lookat = grasp_spec.get("lookat_vector", [0.0, 0.0, -1.0])
+        roll_off = float(grasp_spec.get("tcp_roll_rad", 0.0))
+        sync_yaw = bool(grasp_spec.get("sync_object_yaw_as_tcp_roll", True))
+        obj_yaw = object_yaw_for_grasp(T_base_object[:3, :3], grasp_spec) if sync_yaw else 0.0
+        base = str(self.motion_cfg.get("base_frame", "base_link"))
+        self.get_logger().info(
+            f"foundation_pose_grasp: class={tgt!r} grip_offset_m={offset} "
+            f"lookat_base={lookat} hover_standoff_m={hover_standoff:.3f} "
+            f"touch_standoff_m={touch_standoff:.3f} "
+            f"object_yaw={math.degrees(obj_yaw):.1f}° tcp_roll={math.degrees(obj_yaw + roll_off):.1f}° "
+            f"(sync_yaw={sync_yaw}) → two-stage MoveIt on {tcp_link!r}"
+        )
+        self.get_logger().info(
+            f"foundation_pose_grasp: HOVER TCP in {base!r}: "
+            f"xyz=({pose_hover.position.x:.3f}, {pose_hover.position.y:.3f}, {pose_hover.position.z:.3f})"
+        )
+        self.get_logger().info(
+            f"foundation_pose_grasp: PLUNGE TCP in {base!r}: "
+            f"xyz=({pose_touch.position.x:.3f}, {pose_touch.position.y:.3f}, {pose_touch.position.z:.3f})"
+        )
+
+    def _foundation_pose_move_with_collisions_retry(
+        self,
+        move_fn: Callable[[Dict[str, Any]], bool],
+        action: Dict[str, Any],
+        stage_label: str,
+    ) -> bool:
+        trial = dict(action)
+        trial["avoid_collisions"] = self._moveit_avoid_collisions(action)
+        return move_fn(trial)
+
+    def _foundation_pose_run_hover_convergence(
+        self,
+        action: Dict[str, Any],
+        pose_hover: Pose,
+        step_scales: Sequence[float],
+        cfg_fp: Dict[str, Any],
+    ) -> bool:
+        """Stage 1: iterative IK homing to absolute HOVER before plunge."""
+        max_iter = max(
+            1,
+            int(
+                action.get(
+                    "hover_convergence_max_iterations",
+                    cfg_fp.get("hover_convergence_max_iterations", 5),
+                )
+            ),
+        )
+        settle_sec = float(
+            action.get(
+                "hover_convergence_settle_sec",
+                cfg_fp.get("hover_convergence_settle_sec", 0.12),
+            )
+        )
+        scales = tuple(float(s) for s in step_scales)
+
+        def _solve_step() -> Optional[HoverIkAttempt]:
+            result = self._solve_ik_with_step_scales_result(pose_hover, action, scales)
+            if result is None:
+                return None
+            joints, scale = result
+            return HoverIkAttempt(joint_positions=joints, step_scale=scale)
+
+        def _settle() -> None:
+            if settle_sec > 0.0:
+                time.sleep(settle_sec)
+
+        return run_hover_convergence_loop(
+            max_iterations=max_iter,
+            solve_toward_hover=_solve_step,
+            execute_joints=lambda joints: self._execute_joint_goal(action, joints),
+            settle_after_partial=_settle,
+            log_info=self.get_logger().info,
+            log_warn=self.get_logger().warn,
+            log_error=self.get_logger().error,
+        )
+
+    def _foundation_pose_execute_two_stage_grasp(
+        self,
+        action: Dict[str, Any],
+        cfg_fp: Dict[str, Any],
+        T_base_object: np.ndarray,
+        grasp_spec: Dict[str, Any],
+        tgt: str,
+    ) -> bool:
+        """
+        Stage 1 (hover): iterative IK homing (partial steps retried until step_scale=1.0).
+        Stage 2 (plunge): straight-line Cartesian at min_fraction=1.0; IK fallback only at step_scale=1.0.
+        """
+        hover_standoff = float(
+            action.get(
+                "hover_standoff_m",
+                action.get("hover_approach_standoff_m", cfg_fp.get("hover_approach_standoff_m", 0.12)),
+            )
+        )
+        touch_standoff = float(
+            action.get(
+                "touch_standoff_m",
+                action.get("touch_approach_standoff_m", cfg_fp.get("touch_approach_standoff_m", 0.01)),
+            )
+        )
+        tcp_link = str(action.get("ik_link_name") or cfg_fp.get("ik_link_name") or self.tcp_frame_name).strip()
+        hover_scales_raw = action.get("hover_ik_step_scales", cfg_fp.get("hover_ik_step_scales", [1.0, 0.5, 0.25]))
+        hover_scales = tuple(float(x) for x in hover_scales_raw)
+
+        spec_hover = grasp_spec_with_standoff(grasp_spec, hover_standoff)
+        spec_touch = grasp_spec_with_standoff(grasp_spec, touch_standoff)
+        try:
+            pose_hover = _pose_from_transform(compute_base_tcp_pose(T_base_object, spec_hover))
+            pose_touch = _pose_from_transform(compute_base_tcp_pose(T_base_object, spec_touch))
+        except ValueError as exc:
+            self.get_logger().error(f"foundation_pose_grasp: invalid grasp spec — {exc}")
+            return False
+
+        self._foundation_pose_log_tcp_goals(
+            grasp_spec, tgt, tcp_link, pose_hover, pose_touch, hover_standoff, touch_standoff, T_base_object
+        )
+
+        base_name = str(action.get("name", "foundation_pose_grasp"))
+        base_move = dict(action)
+        base_move["ik_link_name"] = tcp_link
+
+        max_hover_iter = int(
+            action.get(
+                "hover_convergence_max_iterations",
+                cfg_fp.get("hover_convergence_max_iterations", 5),
+            )
+        )
+        self.get_logger().info(
+            f"foundation_pose_grasp stage 1/2 HOVER: standoff={hover_standoff:.3f}m "
+            f"ik_scales={hover_scales} convergence_max_iter={max_hover_iter}"
+        )
+        hover_action = dict(base_move)
+        hover_action["name"] = f"{base_name}_hover"
+        if not self._foundation_pose_move_with_collisions_retry(
+            lambda a: self._foundation_pose_run_hover_convergence(a, pose_hover, hover_scales, cfg_fp),
+            hover_action,
+            "hover",
+        ):
+            self.get_logger().error(
+                "foundation_pose_grasp: stage 1 HOVER failed "
+                "(could not reach full hover pose; plunge aborted)."
+            )
+            return False
+
+        plunge_min = float(action.get("plunge_min_fraction", cfg_fp.get("plunge_min_fraction", 1.0)))
+        plunge_max_step = float(action.get("plunge_max_step_m", cfg_fp.get("plunge_max_step_m", 0.002)))
+        cart_mode = str(action.get("plunge_cartesian_mode", cfg_fp.get("plunge_cartesian_mode", "linear")))
+        self.get_logger().info(
+            f"foundation_pose_grasp stage 2/2 PLUNGE: standoff={touch_standoff:.3f}m "
+            f"cartesian_mode={cart_mode!r} min_fraction={plunge_min:.3f} max_step_m={plunge_max_step:.4f}"
+        )
+        plunge_action = dict(base_move)
+        plunge_action["name"] = f"{base_name}_plunge"
+        plunge_action["cartesian_mode"] = cart_mode
+        plunge_action["min_fraction"] = plunge_min
+        plunge_action["max_step_m"] = plunge_max_step
+        if not self._foundation_pose_move_with_collisions_retry(
+            lambda a: self._move_tool_pose_plunge_full(a, pose_touch),
+            plunge_action,
+            "plunge",
+        ):
+            self.get_logger().error(
+                "foundation_pose_grasp: stage 2 PLUNGE failed "
+                "(require 100% Cartesian path or IK at step_scale=1.0)."
+            )
+            return False
+        return True
 
     def _execute_foundation_pose_action(self, action: Dict[str, Any]) -> bool:
         """Trigger YOLO→Detection bridge, wait Isaac TF pose, optional IK look-down on current TCP XYZ."""
@@ -1358,11 +2185,11 @@ class MotionManager(Node):
             )
 
         mesh_hint = self._foundation_pose_mesh_path_for_class(tgt)
-        sym_txt = cfg_fp.get("symmetry_axes_by_class_text") or cfg_fp.get("symmetry_axes_by_class")
+        sym_axes = symmetry_axes_for_class(tgt, cfg_fp)
         if mesh_hint:
             hint = (
                 f"foundation_pose CAD (Isaac mesh_file_path): {mesh_hint} — "
-                f"adjust symmetry_axes on Isaac launch if needed (hint: {sym_txt!r})."
+                f"symmetry_axes={sym_axes} (mesh frame, via foundation_pose.symmetry_axes_by_class)."
             )
             if bool(action.get("log_mesh_hint", True)):
                 self.get_logger().info(hint)
@@ -1370,28 +2197,36 @@ class MotionManager(Node):
         trig = str(cfg_fp.get("bridge_trigger_service", "/foundation_pose_bridge/trigger")).strip()
         tf_timeout = float(action.get("wait_tf_timeout_sec", cfg_fp.get("wait_tf_timeout_sec", 45.0)))
 
+        if bool(cfg_fp.get("auto_launch_stack", True)):
+            if not self._foundation_pose_ensure_stack_running(cfg_fp, tgt, force_relaunch=False):
+                return False
+
         self._ensure_vision_subscriptions_for_yolo()
         if self._fp_last_bbox_xyxy is not None:
             self.get_logger().debug(
                 f"foundation_pose: last yolo_xyxy snapshot {self._fp_last_bbox_xyxy} label={self._fp_last_detection_label!r}"
             )
 
-        if not self._foundation_pose_bridge_push_detection_params(cfg_fp, tgt):
-            return False
-
         trig_action = dict(action)
         trig_action["service_name"] = trig
         trig_action.setdefault("wait_timeout_sec", 8.0)
         trig_action.setdefault("call_timeout_sec", 25.0)
-        if not self._execute_trigger_action(trig_action):
+        self._foundation_pose_post_stack_settle(cfg_fp, action)
+        if not self._foundation_pose_bridge_push_detection_params(
+            cfg_fp,
+            tgt,
+            cold_stack=bool(getattr(self._fp_stack, "started_fresh", False)),
+        ):
+            return False
+        if not self._foundation_pose_bridge_trigger_with_warmup(trig_action, cfg_fp, trig):
             self.get_logger().error(f"foundation_pose: bridge Trigger failed ({trig}).")
             return False
 
         if not self._foundation_pose_wait_tf_object(fp_cfg=cfg_fp, timeout_sec=tf_timeout):
             self.get_logger().error(
                 "foundation_pose: TF wait failed — ensure Isaac FoundationPose is running "
-                "(see ur3_rl_bridge/launch/isaac_foundation_pose_rlcamera.launch.py) and "
-                f"check `ros2 run tf2_ros tf2_echo base_link {cfg_fp.get('object_tf_child_frame', 'fp_object')}`."
+                f"(stack: {self._foundation_pose_stack_launch_file(cfg_fp) or 'foundation_pose_stack.launch.py'}) "
+                f"and check `ros2 run tf2_ros tf2_echo base_link {cfg_fp.get('object_tf_child_frame', 'fp_object')}`."
             )
             return False
 
@@ -1509,6 +2344,151 @@ class MotionManager(Node):
             return [float(pos_by_name[name]) for name in self.joint_names]
         except KeyError:
             return None
+
+    def _continuous_joint_names(self) -> frozenset[str]:
+        raw = self.motion_cfg.get("continuous_joint_names")
+        if raw is None:
+            return DEFAULT_CONTINUOUS_JOINT_NAMES
+        if isinstance(raw, str):
+            names = {raw.strip()} if raw.strip() else set()
+        elif isinstance(raw, (list, tuple, set, frozenset)):
+            names = {str(name).strip() for name in raw if str(name).strip()}
+        else:
+            names = set()
+        return frozenset(names) if names else DEFAULT_CONTINUOUS_JOINT_NAMES
+
+    def _align_continuous_joint_targets(self, positions: Sequence[float]) -> list[float]:
+        """Align YAML/IK targets with live encoder wrap on continuous joints (e.g. wrist_3).
+
+        Real UR wrists accumulate revolutions (e.g. -9.42 rad vs YAML -3.14 rad). MoveIt and
+        the trajectory controller reject goals when the numeric gap is ~2π even though the
+        physical orientation matches. Pick the nearest 2π-equivalent before planning.
+        """
+        aligned = [float(v) for v in positions]
+        if len(aligned) != len(self.joint_names):
+            return aligned
+
+        current = self._current_manipulator_joint_positions()
+        if current is None:
+            return aligned
+
+        continuous = self._continuous_joint_names()
+        for idx, name in enumerate(self.joint_names):
+            if name not in continuous:
+                continue
+            raw_target = aligned[idx]
+            adjusted = _unwrap_joint_angle_to_current(raw_target, current[idx])
+            if abs(adjusted - raw_target) > 1e-4:
+                self.get_logger().info(
+                    f"Unwrapped {name} target for MoveIt: "
+                    f"{raw_target:.4f} -> {adjusted:.4f} rad "
+                    f"(current={current[idx]:.4f})"
+                )
+            aligned[idx] = adjusted
+        return aligned
+
+    def _unwrap_continuous_joints_in_joint_trajectory(
+        self,
+        joint_traj: JointTrajectory,
+        *,
+        reference_by_name: Optional[Dict[str, float]] = None,
+    ) -> JointTrajectory:
+        """Align every trajectory waypoint to the live/previous wrap on continuous joints."""
+        if not joint_traj.points:
+            return joint_traj
+
+        continuous = self._continuous_joint_names()
+        traj_idx_by_name = {name: idx for idx, name in enumerate(joint_traj.joint_names)}
+        to_unwrap: list[tuple[int, str]] = []
+        for name in self.joint_names:
+            if name not in continuous:
+                continue
+            traj_idx = traj_idx_by_name.get(name)
+            if traj_idx is not None:
+                to_unwrap.append((traj_idx, name))
+        if not to_unwrap:
+            return joint_traj
+
+        if reference_by_name is None:
+            current = self._current_manipulator_joint_positions()
+            if current is None:
+                return joint_traj
+            reference_by_name = dict(zip(self.joint_names, current))
+
+        prev: Dict[str, float] = {}
+        for _, name in to_unwrap:
+            if name not in reference_by_name:
+                return joint_traj
+            prev[name] = float(reference_by_name[name])
+
+        max_traj_idx = max(idx for idx, _ in to_unwrap)
+        adjusted_any = False
+        for point in joint_traj.points:
+            if len(point.positions) <= max_traj_idx:
+                continue
+            positions = list(point.positions)
+            for traj_idx, name in to_unwrap:
+                raw = float(positions[traj_idx])
+                adjusted = _unwrap_joint_angle_to_current(raw, prev[name])
+                if abs(adjusted - raw) > 1e-4:
+                    adjusted_any = True
+                positions[traj_idx] = adjusted
+                prev[name] = adjusted
+            point.positions = positions
+
+        if adjusted_any:
+            unwrapped = ", ".join(name for _, name in to_unwrap)
+            self.get_logger().info(
+                f"Unwrapped continuous joint trajectory waypoints ({unwrapped}) "
+                "to match live encoder wrap before controller execution."
+            )
+        return joint_traj
+
+    def _unwrap_continuous_joints_in_robot_trajectory(self, trajectory: RobotTrajectory) -> RobotTrajectory:
+        self._unwrap_continuous_joints_in_joint_trajectory(trajectory.joint_trajectory)
+        return trajectory
+
+    def _execute_planned_move_group_result(
+        self,
+        action: Dict[str, Any],
+        result: MoveGroup.Result,
+        *,
+        log_label: str,
+    ) -> bool:
+        if result.error_code.val != MoveItErrorCodes.SUCCESS:
+            self.get_logger().error(f"{log_label} planning failed: error_code={result.error_code.val}")
+            return False
+
+        planned = result.planned_trajectory
+        if not planned.joint_trajectory.points:
+            self.get_logger().error(f"{log_label} plan returned an empty trajectory.")
+            return False
+
+        timeout = float(action.get("execution_timeout_sec", self._planning_time(action) + 30.0))
+        return self._execute_trajectory(planned, timeout)
+
+    def _moveit_start_joint_state(self) -> JointState:
+        """JointState ordered like the MoveIt group (not /joint_states topic order)."""
+        positions = self._current_manipulator_joint_positions()
+        if positions is None:
+            return self._latest_joint_state if self._latest_joint_state is not None else JointState()
+
+        js = JointState()
+        js.name = list(self.joint_names)
+        js.position = positions
+        latest = self._latest_joint_state
+        if latest is not None and latest.velocity and len(latest.velocity) == len(latest.name):
+            vel_by_name = dict(zip(latest.name, latest.velocity))
+            try:
+                js.velocity = [float(vel_by_name[name]) for name in self.joint_names]
+            except KeyError:
+                pass
+        return js
+
+    def _moveit_avoid_collisions(self, action: Optional[Dict[str, Any]] = None) -> bool:
+        if action is not None and "avoid_collisions" in action:
+            return bool(action["avoid_collisions"])
+        return bool(self.motion_cfg.get("avoid_collisions", True))
 
     @staticmethod
     def _yolo_redetect_nudge_patterns(cfg: Dict[str, Any]) -> list[tuple[float, float, float]]:
@@ -1795,7 +2775,7 @@ class MotionManager(Node):
             self.get_logger().warn(
                 "yolo_visual_center acquisition debug: depth buffer empty — "
                 "depth Image must publish sensor_msgs/Image with encoding "
-                "`32FC1` (meters)."
+                "`32FC1` (meters) or `16UC1` (millimeters, e.g. RealSense)."
             )
             return
         finite = depth_buf[np.isfinite(depth_buf)]
@@ -1925,7 +2905,14 @@ class MotionManager(Node):
         dv = float(v) - cy
         return u, v, float(x_cam), float(y_cam), float(z), du, dv, float(best_conf)
 
-    def _lookup_tf_mat(self, target_frame: str, source_frame: str, timeout_sec: float) -> Optional[np.ndarray]:
+    def _lookup_tf_mat(
+        self,
+        target_frame: str,
+        source_frame: str,
+        timeout_sec: float,
+        *,
+        log_error: bool = True,
+    ) -> Optional[np.ndarray]:
         """
         TF transform converting a point from `source_frame` to `target_frame`:
         p_target = R @ p_source + t (4x4 stores R,t).
@@ -1935,7 +2922,8 @@ class MotionManager(Node):
                 target_frame, source_frame, Time(), timeout=RclDuration(seconds=float(timeout_sec))
             )
         except Exception as exc:  # noqa: BLE001
-            self.get_logger().error(f"TF {target_frame} <- {source_frame} failed: {exc}")
+            if log_error:
+                self.get_logger().error(f"TF {target_frame} <- {source_frame} failed: {exc}")
             return None
         q = st.transform.rotation
         qv = np.array([float(q.x), float(q.y), float(q.z), float(q.w)], dtype=np.float64)
@@ -2447,9 +3435,7 @@ class MotionManager(Node):
                     "yolo_visual_center: Cartesian path coverage low — retrying execution with "
                     f"relaxed min_fraction={min_fraction:.2f} (partial segment motion is OK during centering)."
                 )
-            avoid_order = (bool(smooth.get("avoid_collisions", True)), False)
-            if bool(cfg.get("yolo_center_skip_collision_check", False)):
-                avoid_order = (False,)
+            avoid_order = (self._moveit_avoid_collisions(smooth),)
             for avoid in avoid_order:
                 trial = dict(smooth, avoid_collisions=avoid)
                 cres = self._execute_cartesian_path(trial, waypoints, min_fraction)
@@ -2476,7 +3462,7 @@ class MotionManager(Node):
         )
         ik_trial = dict(
             smooth,
-            avoid_collisions=bool(cfg.get("yolo_center_ik_fallback_avoid_collisions", False)),
+            avoid_collisions=self._moveit_avoid_collisions(smooth),
             min_fraction=ik_frac,
         )
         self.get_logger().warn(
@@ -2522,12 +3508,17 @@ class MotionManager(Node):
             return False, 0.0
         min_orient_rad = float(cfg.get("yolo_center_min_orient_move_rad", 0.0025))
         trial = dict(center_action)
-        if bool(cfg.get("yolo_center_skip_collision_check", False)):
-            trial["avoid_collisions"] = False
-        elif "yolo_visual_center_avoid_collisions" in cfg:
-            trial["avoid_collisions"] = bool(cfg["yolo_visual_center_avoid_collisions"])
-        joint_positions = self._solve_ik_scaled_steps(goal_pose, trial)
-        if joint_positions is not None and self._execute_joint_goal(trial, joint_positions):
+        trial["avoid_collisions"] = self._moveit_avoid_collisions(center_action)
+        lift_m, roll_deg = self._yolo_recovery_offsets(trial, cfg)
+        candidates = self._yolo_relaxed_pose_candidates_from_goal(
+            goal_pose, cfg, recovery_lift_m=lift_m, recovery_roll_deg=roll_deg
+        )
+        moved = False
+        for _label, pose in candidates:
+            if self._move_yolo_center_ik(trial, cfg, pose):
+                moved = True
+                break
+        if moved:
             after = self._lookup_tool0_pose()
             if after is None:
                 return False, 0.0
@@ -4146,6 +5137,33 @@ class MotionManager(Node):
             return False
         return self._execute_joint_goal(action, joint_positions)
 
+    def _move_tool_pose_ik_joint_scaled(
+        self,
+        action: Dict[str, Any],
+        pose: Pose,
+        step_scales: Sequence[float],
+    ) -> bool:
+        """IK + joint plan using explicit position-interpolation scales."""
+        joint_positions = self._solve_ik_with_step_scales(pose, action, step_scales)
+        if joint_positions is None:
+            return False
+        return self._execute_joint_goal(action, joint_positions)
+
+    def _move_tool_pose_plunge_full(self, action: Dict[str, Any], pose: Pose) -> bool:
+        """Straight-line Cartesian plunge; IK fallback only at step_scale=1.0 (no partial IK)."""
+        min_fraction = float(action.get("min_fraction", 1.0))
+        cres = self._execute_cartesian_path(action, [pose], min_fraction)
+        if cres:
+            return True
+        self.get_logger().warn(
+            "Plunge Cartesian path incomplete or failed — trying IK at step_scale=1.0 only."
+        )
+        joint_positions = self._solve_ik_with_step_scales(pose, action, (1.0,))
+        if joint_positions is None:
+            self.get_logger().error("Plunge IK failed: no solution at full step (step_scale=1.0).")
+            return False
+        return self._execute_joint_goal(action, joint_positions)
+
     def _tool_pose_translate_along_optical_forward(
         self,
         delta_forward_m: float,
@@ -4196,6 +5214,255 @@ class MotionManager(Node):
         T_goal[:3, 3] = T_base_opt[:3, 3] + delta_base
         T_base_tool = T_goal @ np.linalg.inv(T_tool_opt)
         return _pose_from_transform(T_base_tool)
+
+    def _yolo_lookat_hint_vector(self, cfg: Dict[str, Any]) -> np.ndarray:
+        raw = cfg.get("yolo_visual_center_lookat_hint", [0.0, 0.0, -1.0])
+        if not isinstance(raw, (list, tuple)) or len(raw) != 3:
+            return np.array([0.0, 0.0, -1.0], dtype=np.float64)
+        return _normalize(
+            np.array([float(raw[0]), float(raw[1]), float(raw[2])], dtype=np.float64),
+            "yolo_visual_center_lookat_hint",
+        )
+
+    @staticmethod
+    def _rotation_matrix_local_x(angle_rad: float) -> np.ndarray:
+        """Rotation about the tool / TCP +X axis (positive angle → camera looks slightly lower when raised)."""
+        c = math.cos(float(angle_rad))
+        s = math.sin(float(angle_rad))
+        return np.array([[1.0, 0.0, 0.0], [0.0, c, -s], [0.0, s, c]], dtype=np.float64)
+
+    def _yolo_recovery_offsets(self, _action: Dict[str, Any], _cfg: Dict[str, Any]) -> tuple[float, float]:
+        """Centering IK never bakes in recovery; use _yolo_execute_recovery_adjustment between sessions."""
+        return 0.0, 0.0
+
+    def _yolo_recovery_step_sizes(self, action: Dict[str, Any], cfg: Dict[str, Any]) -> tuple[float, float]:
+        """Per recovery session: ΔZ (base +Z) and Δroll (tool +X), applied only in recovery motion (not in centering IK)."""
+        lift_step = float(cfg.get("yolo_visual_center_recovery_lift_step_m", 0.04))
+        roll_step = float(cfg.get("yolo_visual_center_recovery_roll_step_deg", 5.0))
+        if "yolo_visual_center_recovery_lift_step_m" in action:
+            lift_step = float(action["yolo_visual_center_recovery_lift_step_m"])
+        roll_key = "yolo_visual_center_recovery_roll_step_deg"
+        if roll_key not in action and "yolo_visual_center_recovery_roll_add_deg" in action:
+            roll_key = "yolo_visual_center_recovery_roll_add_deg"
+        if roll_key in action:
+            roll_step = float(action[roll_key])
+        return lift_step, roll_step
+
+    def _yolo_tool_pose_apply_recovery_delta(
+        self, pose_now: Pose, *, lift_m: float, roll_deg: float
+    ) -> Pose:
+        """Current tool0 pose + base +Z lift + roll about tool +X (recovery-only motion)."""
+        out = Pose()
+        out.position.x = float(pose_now.position.x)
+        out.position.y = float(pose_now.position.y)
+        out.position.z = float(pose_now.position.z + float(lift_m))
+        q = np.array(
+            [
+                pose_now.orientation.x,
+                pose_now.orientation.y,
+                pose_now.orientation.z,
+                pose_now.orientation.w,
+            ],
+            dtype=np.float64,
+        )
+        R = _quat_to_rot(q)
+        if abs(float(roll_deg)) > 1e-6:
+            R = _orthonormalize_rotation(
+                R @ self._rotation_matrix_local_x(math.radians(float(roll_deg)))
+            )
+        qn = _rot_to_quat(R)
+        out.orientation.x = float(qn[0])
+        out.orientation.y = float(qn[1])
+        out.orientation.z = float(qn[2])
+        out.orientation.w = float(qn[3])
+        return out
+
+    def _yolo_execute_recovery_adjustment(
+        self,
+        action: Dict[str, Any],
+        cfg: Dict[str, Any],
+        *,
+        lift_m: float,
+        roll_deg: float,
+        tool_frame: str,
+        tf_timeout: float,
+    ) -> bool:
+        """Move arm higher (+Z) and roll about tool +X; does not include bbox centering."""
+        pose_now = self._lookup_tool0_pose()
+        if pose_now is None:
+            self.get_logger().error("yolo_visual_center recovery: could not read current tool0 pose.")
+            return False
+        goal = self._yolo_tool_pose_apply_recovery_delta(pose_now, lift_m=lift_m, roll_deg=roll_deg)
+        move_action = dict(action)
+        move_action["avoid_collisions"] = bool(cfg.get("yolo_visual_center_avoid_collisions", True))
+        self.get_logger().info(
+            "yolo_visual_center: recovery motion (no centering) — "
+            f"base +Z {float(lift_m) * 1000.0:.1f} mm, tool +X roll {float(roll_deg):+.1f}°."
+        )
+        if not self._move_yolo_center_ik(move_action, cfg, goal):
+            self.get_logger().error("yolo_visual_center recovery: MoveIt IK failed for recovery motion.")
+            return False
+        settle_n = max(0, int(cfg.get("yolo_visual_center_recovery_settle_frames", 12)))
+        settle_p = float(cfg.get("yolo_center_after_stream_spin_period_sec", 0.04))
+        if settle_n > 0:
+            self._spin_vision_settle(settle_n, settle_p)
+        return True
+
+    def _yolo_redetect_after_recovery(
+        self,
+        model: Any,
+        det_track: _YoloDetectionTrack,
+        *,
+        target_class: str,
+        min_conf: float,
+        yolo_iou: float,
+        roi: int,
+        ray_kw: Dict[str, Any],
+        cfg: Dict[str, Any],
+    ) -> Optional[tuple[Any, Any]]:
+        """Fresh YOLO detection after recovery motion (restart centering from new view)."""
+        attempts = max(5, int(cfg.get("yolo_visual_center_recovery_redetect_attempts", 40)))
+        spin_sec = float(cfg.get("yolo_visual_center_acquire_spin_sec", 0.05))
+        for idx in range(attempts):
+            self._raise_if_abort()
+            rclpy.spin_once(self, timeout_sec=spin_sec)
+            det_raw = self._yolo_snapshot_and_detect(
+                model,
+                target_class=target_class,
+                min_conf=min_conf,
+                yolo_iou=yolo_iou,
+                roi=roi,
+                ray_kw=ray_kw,
+            )
+            if det_raw is None:
+                continue
+            ok, det, _ = det_track.push(
+                det_raw,
+                log_fn=self.get_logger().info,
+                phase_tag="yolo_visual_center after recovery",
+            )
+            if ok and det is not None:
+                self.get_logger().info(
+                    f"yolo_visual_center: redetected {target_class!r} after recovery "
+                    f"(attempt {idx + 1}/{attempts})."
+                )
+                return det_raw, det
+        self.get_logger().error(
+            f"yolo_visual_center: no {target_class!r} detection after recovery ({attempts} frames)."
+        )
+        return None
+
+    def _tool_pose_center_for_yolo(
+        self,
+        x_cam: float,
+        y_cam: float,
+        z_cam: float,
+        z_goal_m: float,
+        *,
+        recovery_lift_m: float = 0.0,
+        recovery_roll_deg: float = 0.0,
+        nudge_sign: float = 1.0,
+        sign_u: float = -1.0,
+        sign_v: float = -1.0,
+        optical_frame: str,
+        base_frame: str,
+        tool_frame: str,
+        tf_timeout_sec: float,
+    ) -> Optional[Pose]:
+        """
+        Center bbox + depth keeping current tool0 orientation; optional base +Z lift and +X roll.
+
+        Does not impose base_link [0,0,-1] lookat — preserves Look pose RPY, adds roll in tool frame.
+        """
+        pose = self._tool_pose_center_object_at_depth(
+            x_cam,
+            y_cam,
+            z_cam,
+            z_goal_m,
+            nudge_sign=nudge_sign,
+            sign_u=sign_u,
+            sign_v=sign_v,
+            optical_frame=optical_frame,
+            base_frame=base_frame,
+            tool_frame=tool_frame,
+            tf_timeout_sec=tf_timeout_sec,
+        )
+        if pose is None:
+            return None
+        if float(recovery_lift_m) != 0.0:
+            pose.position.z = float(pose.position.z + float(recovery_lift_m))
+        if abs(float(recovery_roll_deg)) > 1e-6:
+            q = np.array(
+                [
+                    pose.orientation.x,
+                    pose.orientation.y,
+                    pose.orientation.z,
+                    pose.orientation.w,
+                ],
+                dtype=np.float64,
+            )
+            R = _quat_to_rot(q)
+            R = _orthonormalize_rotation(R @ self._rotation_matrix_local_x(math.radians(float(recovery_roll_deg))))
+            qn = _rot_to_quat(R)
+            pose.orientation.x = float(qn[0])
+            pose.orientation.y = float(qn[1])
+            pose.orientation.z = float(qn[2])
+            pose.orientation.w = float(qn[3])
+        return pose
+
+    def _yolo_relaxed_pose_candidates_from_goal(
+        self,
+        goal_pose: Pose,
+        cfg: Dict[str, Any],
+        *,
+        recovery_lift_m: float = 0.0,
+        recovery_roll_deg: float = 0.0,
+    ) -> list[tuple[str, Pose]]:
+        """Stream centering: goal pose plus optional lift / tool +X roll on current orientation."""
+        candidates: list[tuple[str, Pose]] = [("stream_goal", goal_pose)]
+        if abs(recovery_lift_m) < 1e-6 and abs(recovery_roll_deg) < 1e-6:
+            return candidates
+        alt = Pose()
+        alt.position.x = float(goal_pose.position.x)
+        alt.position.y = float(goal_pose.position.y)
+        alt.position.z = float(goal_pose.position.z + float(recovery_lift_m))
+        alt.orientation = goal_pose.orientation
+        if abs(recovery_roll_deg) > 1e-6:
+            q = np.array(
+                [
+                    alt.orientation.x,
+                    alt.orientation.y,
+                    alt.orientation.z,
+                    alt.orientation.w,
+                ],
+                dtype=np.float64,
+            )
+            R = _quat_to_rot(q)
+            R = _orthonormalize_rotation(
+                R @ self._rotation_matrix_local_x(math.radians(float(recovery_roll_deg)))
+            )
+            qn = _rot_to_quat(R)
+            alt.orientation.x = float(qn[0])
+            alt.orientation.y = float(qn[1])
+            alt.orientation.z = float(qn[2])
+            alt.orientation.w = float(qn[3])
+        candidates.append(
+            (
+                f"recovery_lift_{recovery_lift_m * 1000.0:.0f}mm_roll_{recovery_roll_deg:.1f}deg",
+                alt,
+            )
+        )
+        return candidates
+
+    def _move_yolo_center_ik(
+        self,
+        action: Dict[str, Any],
+        cfg: Dict[str, Any],
+        pose: Pose,
+    ) -> bool:
+        scales_raw = cfg.get("yolo_visual_center_ik_step_scales", [1.0])
+        scales = tuple(float(s) for s in scales_raw) if isinstance(scales_raw, (list, tuple)) else (1.0,)
+        return self._move_tool_pose_ik_joint_scaled(action, pose, scales)
 
     def _tool_pose_center_object_at_depth(
         self,
@@ -4265,16 +5532,18 @@ class MotionManager(Node):
         z_goal_m: float,
         tol_z_m: float,
     ) -> bool:
-        """One MoveGroup plan from current joints to standoff pose (image center + target depth)."""
+        """One MoveGroup plan: center bbox at depth, keep current tool0 orientation (no recovery offsets)."""
         _u, _v, x_cam, y_cam, z_cam, du, dv, conf = det
         nudge_sign = float(cfg.get("yolo_center_nudge_sign", 1.0))
         sign_u = float(cfg.get("yolo_center_orient_sign_u", cfg.get("yolo_servo_ibvs_sign_u", -1.0)))
         sign_v = float(cfg.get("yolo_center_orient_sign_v", cfg.get("yolo_servo_ibvs_sign_v", -1.0)))
-        pose_goal = self._tool_pose_center_object_at_depth(
+        pose_goal = self._tool_pose_center_for_yolo(
             x_cam,
             y_cam,
             z_cam,
             z_goal_m,
+            recovery_lift_m=0.0,
+            recovery_roll_deg=0.0,
             nudge_sign=nudge_sign,
             sign_u=sign_u,
             sign_v=sign_v,
@@ -4299,13 +5568,13 @@ class MotionManager(Node):
         move_action = dict(action)
         move_action["avoid_collisions"] = bool(cfg.get("yolo_visual_center_avoid_collisions", True))
         self.get_logger().info(
-            "yolo_visual_center moveit_one_shot: one MoveGroup IK plan "
-            f"(no /compute_cartesian_path). object optical=({x_cam:.4f}, {y_cam:.4f}, {z_cam:.3f}) m, "
+            "yolo_visual_center moveit_one_shot: MoveGroup IK (Look orientation, no recovery offsets). "
+            f"object optical=({x_cam:.4f}, {y_cam:.4f}, {z_cam:.3f}) m, "
             f"Δu={du:.1f} Δv={dv:.1f} px, goal depth={z_goal_m:.3f} m, "
             f"tool0 Δ_cam=({delta_cam[0]:.4f}, {delta_cam[1]:.4f}, {delta_cam[2]:.4f}) m "
-            f"(|Δ|≈{shift_mm:.1f} mm, nudge_sign={nudge_sign:+.1f}, sign_u={sign_u:+.1f}, sign_v={sign_v:+.1f}), conf={conf:.3f}."
+            f"(|Δ|≈{shift_mm:.1f} mm), conf={conf:.3f}."
         )
-        if not self._move_tool_pose_ik_joint(move_action, pose_goal):
+        if not self._move_yolo_center_ik(move_action, cfg, pose_goal):
             self.get_logger().error("yolo_visual_center moveit_one_shot: MoveIt IK / joint plan failed.")
             return False
 
@@ -4419,10 +5688,23 @@ class MotionManager(Node):
         return self._move_cartesian_waypoint_then_ik(action, waypoints[-1])
 
     def _solve_ik_scaled_steps(self, pose: Pose, action: Dict[str, Any]) -> Optional[list[float]]:
-        """Interpolate tool0 **position** toward ``pose`` while using full target orientation; retries with smaller steps."""
-        step_scales = (1.0, 0.5, 0.25, 0.125)
-        for idx, step_scale in enumerate(step_scales):
-            pose_now = self._lookup_tool0_pose()
+        """Interpolate IK link **position** toward ``pose``; retries with smaller steps."""
+        custom = action.get("ik_step_scales")
+        if custom is not None:
+            return self._solve_ik_with_step_scales(pose, action, tuple(float(x) for x in custom))
+        return self._solve_ik_with_step_scales(pose, action, (1.0, 0.5, 0.25, 0.125))
+
+    def _solve_ik_with_step_scales_result(
+        self,
+        pose: Pose,
+        action: Dict[str, Any],
+        step_scales: Sequence[float],
+    ) -> Optional[tuple[list[float], float]]:
+        """Interpolate IK link position toward absolute ``pose``; return (joints, step_scale) or None."""
+        ik_link = str(action.get("ik_link_name", self.motion_cfg["ik_link_name"])).strip()
+        scales = tuple(float(s) for s in step_scales)
+        for idx, step_scale in enumerate(scales):
+            pose_now = self._lookup_link_pose(ik_link)
             if pose_now is None:
                 return None
             tgt = Pose()
@@ -4430,13 +5712,26 @@ class MotionManager(Node):
             tgt.position.x = float(pose_now.position.x + step_scale * (pose.position.x - pose_now.position.x))
             tgt.position.y = float(pose_now.position.y + step_scale * (pose.position.y - pose_now.position.y))
             tgt.position.z = float(pose_now.position.z + step_scale * (pose.position.z - pose_now.position.z))
-            is_last = idx == len(step_scales) - 1
+            is_last = idx == len(scales) - 1
             joint_positions = self._solve_ik(tgt, action, silent_ik_failure=not is_last)
             if joint_positions is not None:
-                if idx > 0:
-                    self.get_logger().warn(f"IK succeeded with step_scale={step_scale}.")
-                return joint_positions
+                return joint_positions, float(step_scale)
         return None
+
+    def _solve_ik_with_step_scales(
+        self,
+        pose: Pose,
+        action: Dict[str, Any],
+        step_scales: Sequence[float],
+    ) -> Optional[list[float]]:
+        """Single-shot IK toward ``pose`` (first successful scale only — prefer hover convergence for HOVER)."""
+        result = self._solve_ik_with_step_scales_result(pose, action, step_scales)
+        if result is None:
+            return None
+        joint_positions, step_scale = result
+        if step_scale < 1.0 - 1e-6:
+            self.get_logger().warn(f"IK succeeded with step_scale={step_scale}.")
+        return joint_positions
 
     def _move_cartesian_waypoint_then_ik(self, action: Dict[str, Any], waypoint: Pose) -> bool:
         """Try MoveIt Cartesian path to a single waypoint, then IK + joint trajectory fallback."""
@@ -4450,12 +5745,13 @@ class MotionManager(Node):
             return False
         return self._execute_joint_goal(action, joint_positions)
 
-    def _lookup_tool0_pose(self) -> Optional[Pose]:
+    def _lookup_link_pose(self, link_name: str) -> Optional[Pose]:
         base = str(self.motion_cfg["base_frame"])
+        link = str(link_name).strip()
         try:
-            t = self._tf_buffer.lookup_transform(base, "tool0", Time(), timeout=RclDuration(seconds=3.0))
+            t = self._tf_buffer.lookup_transform(base, link, Time(), timeout=RclDuration(seconds=3.0))
         except Exception as exc:  # noqa: BLE001
-            self.get_logger().error(f"TF {base} -> tool0 failed: {exc}")
+            self.get_logger().error(f"TF {base} -> {link} failed: {exc}")
             return None
         pose = Pose()
         pose.position.x = float(t.transform.translation.x)
@@ -4463,6 +5759,9 @@ class MotionManager(Node):
         pose.position.z = float(t.transform.translation.z)
         pose.orientation = t.transform.rotation
         return pose
+
+    def _lookup_tool0_pose(self) -> Optional[Pose]:
+        return self._lookup_link_pose("tool0")
 
     def _execute_yolo_visual_center_action(self, action: Dict[str, Any]) -> bool:
         """
@@ -4792,37 +6091,61 @@ class MotionManager(Node):
             prefer_raw_os = bool(cfg.get("yolo_center_use_raw_detection", True))
             z_goal = float(dist_target)
             max_retries = max(0, int(cfg.get("yolo_moveit_one_shot_max_retries", 3)))
-            for attempt in range(max_retries + 1):
+            max_recovery_sessions = max(
+                0, int(cfg.get("yolo_visual_center_recovery_max_sessions", 3))
+            )
+            lift_step, roll_step = self._yolo_recovery_step_sizes(action, cfg)
+            self.get_logger().info(
+                "yolo_visual_center moveit_one_shot: center from Look (recovery offsets=0); "
+                f"on fail → recovery motion (+Z {lift_step * 1000:.1f} mm, tool +X roll {roll_step:+.1f}°) "
+                f"→ redetect → restart centering (max {max_recovery_sessions} recovery session(s))."
+            )
+            for session in range(max_recovery_sessions + 1):
                 self._raise_if_abort()
-                sample = det_raw if prefer_raw_os and det_raw is not None else det
-                if attempt > 0:
-                    ok_r, det_r, ka_r, dr_r, miss_r = _track_frame(
-                        f"moveit_one_shot retry {attempt}"
+                if session > 0:
+                    self.get_logger().info(
+                        f"yolo_visual_center: recovery session {session}/{max_recovery_sessions} "
+                        "— restarting full centering from fresh detection."
                     )
-                    if miss_r or not ok_r or det_r is None or ka_r:
-                        self.get_logger().warn(
-                            f"yolo_visual_center moveit_one_shot: retry {attempt} — no live detection."
+                centered_ok = False
+                for attempt in range(max_retries + 1):
+                    self._raise_if_abort()
+                    sample = det_raw if prefer_raw_os and det_raw is not None else det
+                    if attempt > 0:
+                        ok_r, det_r, ka_r, dr_r, miss_r = _track_frame(
+                            f"moveit_one_shot retry {attempt} (session {session})"
                         )
-                        continue
-                    sample = dr_r if prefer_raw_os and dr_r is not None else det_r
-                if self._yolo_moveit_one_shot_center_and_standoff(
-                    action,
-                    cfg,
-                    model,
-                    det=sample,
-                    target_class=target_class,
-                    min_conf=min_conf,
-                    yolo_iou=yolo_iou,
-                    roi=roi,
-                    ray_kw=ray_kw,
-                    optical=optical,
-                    base=base,
-                    tool_frame=tool_frame,
-                    tf_timeout=tf_timeout,
-                    tol_px=tol_px,
-                    z_goal_m=z_goal,
-                    tol_z_m=tol_z,
-                ):
+                        if miss_r or not ok_r or det_r is None or ka_r:
+                            self.get_logger().warn(
+                                f"yolo_visual_center moveit_one_shot: session {session} "
+                                f"retry {attempt} — no live detection."
+                            )
+                            continue
+                        sample = dr_r if prefer_raw_os and dr_r is not None else det_r
+                        det = det_r
+                        if dr_r is not None:
+                            det_raw = dr_r
+                    if self._yolo_moveit_one_shot_center_and_standoff(
+                        action,
+                        cfg,
+                        model,
+                        det=sample,
+                        target_class=target_class,
+                        min_conf=min_conf,
+                        yolo_iou=yolo_iou,
+                        roi=roi,
+                        ray_kw=ray_kw,
+                        optical=optical,
+                        base=base,
+                        tool_frame=tool_frame,
+                        tf_timeout=tf_timeout,
+                        tol_px=tol_px,
+                        z_goal_m=z_goal,
+                        tol_z_m=tol_z,
+                    ):
+                        centered_ok = True
+                        break
+                if centered_ok:
                     try:
                         self._foundation_pose_record_bbox_snapshot_after_yolo(
                             model=model,
@@ -4846,8 +6169,40 @@ class MotionManager(Node):
                         tol_px=tol_px,
                         phase_tag="after moveit_one_shot",
                     )
+                if session >= max_recovery_sessions:
+                    break
+                if not self._yolo_execute_recovery_adjustment(
+                    action,
+                    cfg,
+                    lift_m=lift_step,
+                    roll_deg=roll_step,
+                    tool_frame=tool_frame,
+                    tf_timeout=tf_timeout,
+                ):
+                    self.get_logger().warn(
+                        "yolo_visual_center: recovery motion failed — will still try redetect."
+                    )
+                redetect = self._yolo_redetect_after_recovery(
+                    model,
+                    det_track,
+                    target_class=target_class,
+                    min_conf=min_conf,
+                    yolo_iou=yolo_iou,
+                    roi=roi,
+                    ray_kw=ray_kw,
+                    cfg=cfg,
+                )
+                if redetect is None:
+                    self.get_logger().error(
+                        "yolo_visual_center: redetect after recovery failed — stopping."
+                    )
+                    return False
+                det_raw, det = redetect
+                _save_last_detection_pose()
             self.get_logger().error(
-                f"yolo_visual_center moveit_one_shot failed after {max_retries + 1} attempt(s)."
+                "yolo_visual_center moveit_one_shot failed after "
+                f"{max_recovery_sessions + 1} centering session(s) "
+                f"({max_retries + 1} IK attempt(s) per session)."
             )
             return False
 
@@ -5041,7 +6396,13 @@ class MotionManager(Node):
 
         def _approach_move_to_pose(pose_goal: Pose) -> bool:
             if bool(cfg.get("yolo_visual_center_use_moveit_ik", False)):
-                return self._move_tool_pose_ik_joint(action, pose_goal)
+                lift_m, roll_deg = self._yolo_recovery_offsets(action, cfg)
+                for _label, pose in self._yolo_relaxed_pose_candidates_from_goal(
+                    pose_goal, cfg, recovery_lift_m=lift_m, recovery_roll_deg=roll_deg
+                ):
+                    if self._move_yolo_center_ik(action, cfg, pose):
+                        return True
+                return False
             return self._move_cartesian_waypoint_then_ik(action, pose_goal)
 
         def _approach_move_poses(poses: list[Pose]) -> bool:
@@ -5496,10 +6857,28 @@ class MotionManager(Node):
         return [requested_sequence]
 
     def _prompt_for_object_sequence(self, config: Dict[str, Any], first_object_name: str = "") -> tuple[str, list[str]]:
+        object_sequences = config.get("object_sequences", {})
+        valid = ", ".join(sorted(str(name) for name in object_sequences)) if isinstance(object_sequences, dict) else ""
         object_name = first_object_name.strip()
         while True:
             if not object_name:
-                object_name = input("Target Object: ").strip()
+                if not sys.stdin.isatty():
+                    raise RuntimeError(
+                        "Interactive object prompt needs a real terminal (TTY). "
+                        "Use one of:\n"
+                        "  bash ~/ur3_control/run_action_sequencer.sh\n"
+                        "  bash ~/ur3_control/run_action_sequencer.sh Box_1\n"
+                        "  ros2 run ur3_pick_task action_sequencer --ros-args "
+                        "-p config_file:=... -p object_name:=Box_1"
+                    )
+                prompt = f"Target Object ({valid}): " if valid else "Target Object: "
+                try:
+                    object_name = input(prompt).strip()
+                except EOFError as exc:
+                    raise RuntimeError(
+                        "Could not read object name (stdin closed). "
+                        "Pass -p object_name:=Box_1 or use run_action_sequencer.sh."
+                    ) from exc
             try:
                 return object_name, self._sequences_from_object(config, object_name)
             except ValueError as exc:
@@ -5636,10 +7015,18 @@ class MotionManager(Node):
 
     def _execute_action(self, action: Dict[str, Any]) -> bool:
         action_type = str(action.get("type", "")).lower()
+        if self._should_skip_mujoco_action(action):
+            self.get_logger().info(
+                f"Skipping MuJoCo-only action '{action.get('name', action_type)}' "
+                f"because robot_backend={self.robot_backend}."
+            )
+            return True
         if action_type == "joint":
             return self._execute_joint_action(action)
         if action_type == "cartesian":
             return self._execute_cartesian_action(action)
+        if action_type in ("tool_delta", "cartesian_delta", "lift"):
+            return self._execute_tool_delta_action(action)
         if action_type == "waypoint":
             return self._execute_waypoint_action(action)
         if action_type == "weld":
@@ -5650,9 +7037,198 @@ class MotionManager(Node):
             return self._execute_trigger_action(action)
         if action_type in ("foundation_pose", "foundation_pose_wait"):
             return self._execute_foundation_pose_action(action)
+        if action_type in ("foundation_pose_grasp", "foundation_pose_grasp_move"):
+            return self._execute_foundation_pose_grasp_action(action)
         if action_type in ("yolo_visual_center", "visual_center_yolo", "yolo_visual_lookat_and_approach"):
             return self._execute_yolo_visual_center_action(action)
+        if action_type in ("gripper_hybrid_close", "gripper_close_hybrid"):
+            return self._execute_gripper_hybrid_close_action(action)
+        if action_type in ("gripper_hybrid_open", "gripper_open"):
+            return self._execute_gripper_hybrid_open_action(action)
         raise ValueError(f"Unsupported action type: {action_type!r}")
+
+    def _should_skip_mujoco_action(self, action: Dict[str, Any]) -> bool:
+        if self.robot_backend != "real":
+            return False
+        action_type = str(action.get("type", "")).lower()
+        if action_type == "weld" or action.get("mujoco_weld_preset"):
+            return True
+        if action_type != "trigger":
+            return False
+        service_name = str(action.get("service_name", "")).strip()
+        return service_name.startswith("/mujoco/weld/")
+
+    def _execute_tool_delta_action(self, action: Dict[str, Any]) -> bool:
+        """
+        Relative tool move in base frame using current TF(tool0) as start.
+
+        Intended for post-grasp lift motions that should preserve current orientation.
+
+        YAML example:
+          - name: Lift
+            type: tool_delta
+            delta_xyz: [0.0, 0.0, 0.10]   # +Z 10 cm in base frame
+            cartesian_mode: linear
+        """
+        delta_any = action.get("delta_xyz", action.get("delta", action.get("delta_base_xyz")))
+        if not isinstance(delta_any, (list, tuple)) or len(delta_any) != 3:
+            raise ValueError("tool_delta requires delta_xyz: [dx, dy, dz] in base frame (meters)")
+        dx, dy, dz = float(delta_any[0]), float(delta_any[1]), float(delta_any[2])
+
+        link = str(action.get("ik_link_name") or self.motion_cfg.get("ik_link_name", "tool0")).strip() or "tool0"
+        pose_now = self._lookup_link_pose(link)
+        if pose_now is None:
+            return False
+        pose_goal = Pose()
+        pose_goal.orientation = pose_now.orientation
+        pose_goal.position.x = float(pose_now.position.x + dx)
+        pose_goal.position.y = float(pose_now.position.y + dy)
+        pose_goal.position.z = float(pose_now.position.z + dz)
+
+        mode = str(action.get("cartesian_mode", self.motion_cfg["default_cartesian_mode"])).lower()
+        if mode in ("linear", "straight", "cartesian_path"):
+            min_fraction = float(action.get("min_fraction", self.motion_cfg["default_min_fraction"]))
+            cartesian_result = self._execute_cartesian_path(action, [pose_goal], min_fraction)
+            if cartesian_result is not None:
+                return cartesian_result
+            self.get_logger().warn("tool_delta Cartesian planning incomplete; falling back to IK joint-goal.")
+        elif mode not in ("moveit", "joint_goal", "planned"):
+            raise ValueError(f"tool_delta: unsupported cartesian_mode: {mode!r}")
+
+        joint_positions = self._solve_ik(pose_goal, action)
+        if joint_positions is None:
+            return False
+        return self._execute_joint_goal(action, joint_positions)
+
+    def _set_mujoco_tip_object_param(self, tip_object: str) -> bool:
+        """Select which Module_2 tip bodies/welds to use (Box_1, Cylinder_1, Cylinder_2)."""
+        tip = str(tip_object).strip()
+        if not tip:
+            return True
+        client = self._mujoco_set_params_client("/mujoco_node/set_parameters")
+        if not self._wait_for_service_abortable(client, 3.0):
+            self.get_logger().error(
+                "Cannot set module2_tip_object — /mujoco_node/set_parameters unavailable "
+                "(is MuJoCo sim running?)."
+            )
+            return False
+        from rcl_interfaces.msg import Parameter as RosParam
+        from rcl_interfaces.msg import ParameterType, ParameterValue
+        from rcl_interfaces.srv import SetParameters
+
+        req = SetParameters.Request()
+        pv = ParameterValue()
+        pv.type = ParameterType.PARAMETER_STRING
+        pv.string_value = tip
+        req.parameters = [RosParam(name="module2_tip_object", value=pv)]
+        future = client.call_async(req)
+        self._spin_until_future_complete_abortable(future, 5.0)
+        if not future.done() or future.result() is None:
+            self.get_logger().error("set_parameters(module2_tip_object) timed out.")
+            return False
+        results = getattr(future.result(), "results", []) or []
+        for r in results:
+            if hasattr(r, "successful") and not bool(r.successful):
+                self.get_logger().error(
+                    f"set_parameters(module2_tip_object) rejected: {getattr(r, 'reason', '')}"
+                )
+                return False
+        self.get_logger().info(f"MuJoCo module2_tip_object set to {tip!r}.")
+        return True
+
+    def _call_trigger_service(self, service_name: str, call_timeout: float) -> tuple[bool, str]:
+        """Call std_srvs/Trigger once; return (success, message)."""
+        client = self._trigger_service_client(service_name)
+        future = client.call_async(Trigger.Request())
+        self._spin_until_future_complete_abortable(future, call_timeout)
+        if not future.done():
+            return False, "service call timed out"
+        try:
+            result = future.result()
+        except Exception as exc:  # noqa: BLE001
+            return False, str(exc)
+        if result is None:
+            return False, "no result"
+        return bool(result.success), str(getattr(result, "message", "") or "")
+
+    def _foundation_pose_post_stack_settle(self, cfg_fp: Dict[str, Any], action: Dict[str, Any]) -> None:
+        """Brief spin after stack launch so bridge/Isaac subscriptions receive sim camera frames."""
+        settle = float(
+            action.get("bridge_post_launch_settle_sec", cfg_fp.get("bridge_post_launch_settle_sec", 2.0))
+        )
+        if settle <= 0.0:
+            return
+        deadline = time.monotonic() + settle
+        while time.monotonic() < deadline and rclpy.ok():
+            self._raise_if_abort()
+            self._spin_cb(min(0.1, settle))
+
+    def _foundation_pose_bridge_trigger_with_warmup(
+        self,
+        action: Dict[str, Any],
+        cfg_fp: Dict[str, Any],
+        service_name: str,
+    ) -> bool:
+        """
+        Retry foundation_pose_bridge/trigger until rgb+depth+camera_info arrive.
+
+        The bridge node may register its service before the first camera callback.
+        """
+        wait_timeout = float(action.get("wait_timeout_sec", 8.0))
+        call_timeout = float(action.get("call_timeout_sec", 25.0))
+        warmup = float(
+            action.get("bridge_camera_warmup_timeout_sec", cfg_fp.get("bridge_camera_warmup_timeout_sec", 12.0))
+        )
+        period = float(
+            action.get("bridge_trigger_retry_period_sec", cfg_fp.get("bridge_trigger_retry_period_sec", 0.25))
+        )
+        client = self._trigger_service_client(service_name)
+        if not self._wait_for_service_abortable(client, wait_timeout):
+            self.get_logger().error(f"Trigger service not available: {service_name}")
+            return False
+
+        self._ensure_vision_subscriptions_for_yolo()
+        deadline = time.monotonic() + max(1.0, warmup)
+        last_msg = ""
+        attempt = 0
+        while time.monotonic() < deadline and rclpy.ok():
+            self._raise_if_abort()
+            attempt += 1
+            with self._vis_lock:
+                have_cam = (
+                    self._vis_bgr is not None
+                    and self._vis_depth is not None
+                    and self._vis_info is not None
+                )
+            if not have_cam:
+                rclpy.spin_once(self, timeout_sec=period)
+                continue
+            rclpy.spin_once(self, timeout_sec=period)
+            ok, msg = self._call_trigger_service(service_name, call_timeout)
+            if ok:
+                if msg:
+                    self.get_logger().info(f"Trigger OK ({service_name}): {msg}")
+                else:
+                    self.get_logger().info(f"Trigger OK ({service_name})")
+                return True
+            last_msg = msg
+            transient = (
+                "Missing rgb" in msg
+                or "camera_info" in msg
+                or "subscription data" in msg
+            )
+            if not transient:
+                break
+            if attempt == 1 or attempt % 8 == 0:
+                self.get_logger().info(
+                    f"foundation_pose: bridge warming up ({msg}) — retrying…"
+                )
+            rclpy.spin_once(self, timeout_sec=period)
+
+        self.get_logger().error(
+            f"Trigger unsuccessful ({service_name}): {last_msg or 'timeout waiting for camera frames'}"
+        )
+        return False
 
     def _execute_trigger_action(self, action: Dict[str, Any]) -> bool:
         """Call std_srvs/Trigger once (e.g. MuJoCo plate table reset before welding)."""
@@ -5662,28 +7238,153 @@ class MotionManager(Node):
         wait_timeout = float(action.get("wait_timeout_sec", 10.0))
         call_timeout = float(action.get("call_timeout_sec", 15.0))
 
+        tip_object = str(
+            action.get("mujoco_tip_object", action.get("tip_object", self.object_name or ""))
+        ).strip()
+        if tip_object and "module_2_tips" in service_name:
+            if not self._set_mujoco_tip_object_param(tip_object):
+                return False
+
         client = self._trigger_service_client(service_name)
         if not self._wait_for_service_abortable(client, wait_timeout):
             self.get_logger().error(f"Trigger service not available: {service_name}")
             return False
-        future = client.call_async(Trigger.Request())
-        self._spin_until_future_complete_abortable(future, call_timeout)
-        if not future.done():
-            self.get_logger().error(f"Trigger service timed out: {service_name}")
+        ok, msg = self._call_trigger_service(service_name, call_timeout)
+        if not ok:
+            self.get_logger().error(f"Trigger unsuccessful ({service_name}): {msg}")
             return False
-        try:
-            result = future.result()
-        except Exception as exc:  # noqa: BLE001
-            self.get_logger().error(f"Trigger call failed ({service_name}): {exc}")
+        if msg:
+            self.get_logger().info(f"Trigger OK ({service_name}): {msg}")
+        else:
+            self.get_logger().info(f"Trigger OK ({service_name})")
+        return True
+
+    def _mujoco_set_params_client(self, service_name: str) -> Any:
+        if not hasattr(self, "_mujoco_set_params_clients"):
+            from rcl_interfaces.srv import SetParameters
+
+            self._mujoco_set_params_clients: dict[str, Any] = {}
+        if service_name not in self._mujoco_set_params_clients:
+            from rcl_interfaces.srv import SetParameters
+
+            self._mujoco_set_params_clients[service_name] = self.create_client(
+                SetParameters, service_name
+            )
+        return self._mujoco_set_params_clients[service_name]
+
+    def _push_mujoco_gripper_hybrid_params(self, action: Dict[str, Any], cfg: Dict[str, Any]) -> bool:
+        from rcl_interfaces.msg import Parameter as RosParam
+        from rcl_interfaces.msg import ParameterType, ParameterValue
+        from rcl_interfaces.srv import SetParameters
+
+        svc = str(cfg.get("set_parameters_service", "/mujoco_node/set_parameters")).strip()
+        if not svc:
+            self.get_logger().error("gripper: set_parameters_service is empty")
             return False
-        if result is None or not result.success:
-            detail = getattr(result, "message", "") if result is not None else ""
-            self.get_logger().error(f"Trigger unsuccessful ({service_name}): {detail}")
+
+        def _fval(key: str, default_key: str) -> float:
+            if key in action:
+                return float(action[key])
+            return float(cfg.get(default_key, 0.0))
+
+        def _ival(key: str, default_key: str) -> int:
+            if key in action:
+                return int(action[key])
+            return int(cfg.get(default_key, 0))
+
+        fields = [
+            ("gripper_hybrid_close_position_rad", _fval("close_position_rad", "close_position_rad"), ParameterType.PARAMETER_DOUBLE),
+            ("gripper_hybrid_hold_torque_nm", _fval("hold_torque_nm", "hold_torque_nm"), ParameterType.PARAMETER_DOUBLE),
+            ("gripper_hybrid_approach_ramp_rad_s", _fval("approach_ramp_rad_s", "approach_ramp_rad_s"), ParameterType.PARAMETER_DOUBLE),
+            ("gripper_hybrid_min_feedback_torque_nm", _fval("min_feedback_torque_nm", "min_feedback_torque_nm"), ParameterType.PARAMETER_DOUBLE),
+            ("gripper_hybrid_max_joint_speed_rad_s", _fval("max_joint_speed_rad_s", "max_joint_speed_rad_s"), ParameterType.PARAMETER_DOUBLE),
+            ("gripper_hybrid_contact_confirm_steps", _ival("contact_confirm_steps", "contact_confirm_steps"), ParameterType.PARAMETER_INTEGER),
+            ("gripper_hybrid_hold_sec", _fval("hold_sec", "hold_sec"), ParameterType.PARAMETER_DOUBLE),
+            ("gripper_hybrid_timeout_sec", _fval("timeout_sec", "timeout_sec"), ParameterType.PARAMETER_DOUBLE),
+            ("gripper_hybrid_position_kp", _fval("position_kp", "position_kp"), ParameterType.PARAMETER_DOUBLE),
+            ("gripper_hybrid_position_kv", _fval("position_kv", "position_kv"), ParameterType.PARAMETER_DOUBLE),
+        ]
+
+        req = SetParameters.Request()
+        req.parameters = []
+        for name, value, ptype in fields:
+            pv = ParameterValue()
+            pv.type = ptype
+            if ptype == ParameterType.PARAMETER_INTEGER:
+                pv.integer_value = int(value)
+            else:
+                pv.double_value = float(value)
+            req.parameters.append(RosParam(name=name, value=pv))
+
+        cli = self._mujoco_set_params_client(svc)
+        wait_timeout = float(action.get("wait_timeout_sec", cfg.get("service_wait_timeout_sec", 10.0)))
+        if not self._wait_for_service_abortable(cli, wait_timeout):
+            self.get_logger().error(f"gripper: SetParameters service not ready: {svc}")
             return False
-        detail = str(getattr(result, "message", "") or "").strip()
-        if detail:
-            self.get_logger().info(f"Trigger OK ({service_name}): {detail}")
-        self.get_logger().info(f"Trigger OK ({service_name}): {getattr(result, 'message', '')}")
+        future = cli.call_async(req)
+        self._spin_until_future_complete_abortable(future, wait_timeout)
+        if not future.done() or future.result() is None:
+            self.get_logger().error(f"gripper: SetParameters timed out ({svc})")
+            return False
+        for r in getattr(future.result(), "results", []) or []:
+            if hasattr(r, "successful") and not bool(r.successful):
+                self.get_logger().error(
+                    f"gripper: SetParameters rejected ({svc}): {getattr(r, 'reason', '')}"
+                )
+                return False
+        self.get_logger().info(
+            f"gripper: MuJoCo hybrid params → close={fields[0][1]:.3f} rad hold={fields[1][1]:.3f} N·m"
+        )
+        return True
+
+    def _execute_gripper_hybrid_close_action(self, action: Dict[str, Any]) -> bool:
+        """Position approach on gripper_motor_joint_pos, then torque hold via MuJoCo actuator reconfiguration."""
+        cfg = dict(self.gripper_cfg)
+        if isinstance(action.get("gripper"), dict):
+            cfg.update(dict(action["gripper"]))
+
+        service_name = str(action.get("service_name", cfg.get("hybrid_close_service", ""))).strip()
+        if not service_name:
+            raise ValueError("gripper_hybrid_close requires hybrid_close_service in gripper config")
+
+        if not self._push_mujoco_gripper_hybrid_params(action, cfg):
+            return False
+
+        wait_timeout = float(action.get("wait_timeout_sec", cfg.get("service_wait_timeout_sec", 10.0)))
+        call_timeout = float(action.get("call_timeout_sec", cfg.get("service_call_timeout_sec", 60.0)))
+        client = self._trigger_service_client(service_name)
+        if not self._wait_for_service_abortable(client, wait_timeout):
+            self.get_logger().error(f"gripper_hybrid_close: service not available: {service_name}")
+            return False
+
+        self.get_logger().info(
+            "gripper_hybrid_close: closing via position→torque (contact from actuator feedback only)…"
+        )
+        ok, msg = self._call_trigger_service(service_name, call_timeout)
+        if not ok:
+            self.get_logger().error(f"gripper_hybrid_close failed ({service_name}): {msg}")
+            return False
+        self.get_logger().info(f"gripper_hybrid_close OK: {msg or service_name}")
+        return True
+
+    def _execute_gripper_hybrid_open_action(self, action: Dict[str, Any]) -> bool:
+        cfg = dict(self.gripper_cfg)
+        service_name = str(
+            action.get("service_name", cfg.get("hybrid_open_service", "/mujoco/gripper/hybrid_open"))
+        ).strip()
+        if not service_name:
+            raise ValueError("gripper_hybrid_open requires hybrid_open_service in gripper config")
+        wait_timeout = float(action.get("wait_timeout_sec", cfg.get("service_wait_timeout_sec", 10.0)))
+        call_timeout = float(action.get("call_timeout_sec", 15.0))
+        client = self._trigger_service_client(service_name)
+        if not self._wait_for_service_abortable(client, wait_timeout):
+            self.get_logger().error(f"gripper_hybrid_open: service not available: {service_name}")
+            return False
+        ok, msg = self._call_trigger_service(service_name, call_timeout)
+        if not ok:
+            self.get_logger().error(f"gripper_hybrid_open failed ({service_name}): {msg}")
+            return False
+        self.get_logger().info(f"gripper_hybrid_open OK: {msg or service_name}")
         return True
 
     def _weld_pose_publisher(self, topic: str) -> Any:
@@ -6012,8 +7713,21 @@ class MotionManager(Node):
         ps = PlanningScene()
         ps.robot_state = rs
         self._publish_planning_scene_diff(ps, settle_sec=settle_sec)
+
+        world_remove_list: list[CollisionObject] = []
+        for remove in remove_list:
+            # Detaching can materialize a world object at the current tool pose. MuJoCo owns
+            # the real body in this task, so remove any MoveIt proxy in a second diff.
+            co = CollisionObject()
+            co.id = remove.object.id
+            co.operation = CollisionObject.REMOVE
+            world_remove_list.append(co)
+
+        ps = PlanningScene()
+        ps.world.collision_objects = world_remove_list
+        self._publish_planning_scene_diff(ps, settle_sec=settle_sec)
         self.get_logger().info(
-            f"Planning scene: DETACH from {link_name!r}: {', '.join(str(o.object.id) for o in remove_list)}"
+            f"Planning scene: DETACH/REMOVE from {link_name!r}: {', '.join(str(o.object.id) for o in remove_list)}"
         )
         return True
 
@@ -6029,7 +7743,14 @@ class MotionManager(Node):
             cartesian_result = self._execute_cartesian_path(action, [pose], min_fraction)
             if cartesian_result is not None:
                 return cartesian_result
-            self.get_logger().warn("Cartesian path planning was incomplete; falling back to IK joint-goal planning.")
+            if action.get("cartesian_linear_fallback") is False:
+                self.get_logger().error(
+                    "Cartesian linear path failed and cartesian_linear_fallback is disabled."
+                )
+                return False
+            self.get_logger().warn(
+                "Cartesian path planning was incomplete; falling back to IK joint-goal planning."
+            )
         elif mode not in ("moveit", "joint_goal", "planned"):
             raise ValueError(f"Unsupported cartesian_mode: {mode!r}")
 
@@ -6082,7 +7803,7 @@ class MotionManager(Node):
         goal = MoveGroupSequence.Goal()
         goal.request.items = items
         goal.planning_options = PlanningOptions()
-        goal.planning_options.plan_only = False
+        goal.planning_options.plan_only = True
         goal.planning_options.look_around = False
         goal.planning_options.replan = True
         goal.planning_options.replan_attempts = int(action.get("replan_attempts", 1))
@@ -6099,7 +7820,7 @@ class MotionManager(Node):
         result_future = goal_handle.get_result_async()
         self._spin_until_future_complete_abortable(result_future, timeout, goal_handle)
         if not result_future.done() or result_future.result() is None:
-            self.get_logger().error("MoveGroupSequence planning/execution timed out.")
+            self.get_logger().error("MoveGroupSequence planning timed out.")
             return False
 
         result = result_future.result().result
@@ -6107,22 +7828,139 @@ class MotionManager(Node):
         if code != MoveItErrorCodes.SUCCESS:
             self.get_logger().error(f"MoveGroupSequence failed: error_code={code}")
             return False
+
+        planned = list(result.response.planned_trajectories)
+        if not planned:
+            self.get_logger().error("MoveGroupSequence plan returned no trajectories.")
+            return False
+
+        exec_timeout = float(action.get("execution_timeout_sec", timeout))
+        for index, trajectory in enumerate(planned):
+            if not self._execute_trajectory(trajectory, exec_timeout):
+                self.get_logger().error(f"MoveGroupSequence segment {index + 1}/{len(planned)} failed.")
+                return False
         return True
 
     def _execute_waypoints_sequentially(self, action: Dict[str, Any], waypoints: list[Dict[str, Any]]) -> bool:
         for index, waypoint in enumerate(waypoints):
             self._raise_if_abort()
             waypoint_action = self._waypoint_action(action, waypoint, index)
-            joint_positions = self._waypoint_joint_positions(waypoint_action)
-            if joint_positions is None:
-                return False
-            if not self._execute_joint_goal(waypoint_action, joint_positions):
-                return False
+            waypoint_type = self._waypoint_type(waypoint)
+            if waypoint_type == "joint":
+                if not self._execute_joint_action(waypoint_action):
+                    return False
+            elif waypoint_type == "cartesian":
+                if not self._execute_cartesian_action(waypoint_action):
+                    return False
+            else:
+                raise ValueError(f"Unsupported waypoint type: {waypoint_type!r}")
         return True
+
+    def _execute_cartesian_moveit_fallback(self, action: Dict[str, Any], pose: Pose) -> bool:
+        if self._execute_pose_goal(action, pose):
+            return True
+        self.get_logger().warn("Pose goal planning failed; falling back to IK joint-goal planning.")
+        joint_positions = self._solve_ik(pose, action)
+        if joint_positions is None:
+            return False
+        return self._execute_joint_goal(action, joint_positions)
+
+    def _build_pose_goal_constraints(self, action: Dict[str, Any], tool_pose: Pose) -> Constraints:
+        link_name = str(action.get("ik_link_name", self.motion_cfg["ik_link_name"])).strip() or "tool0"
+        base_frame = str(self.motion_cfg["base_frame"])
+        pos_tol = float(action.get("position_tolerance_m", 0.005))
+        ori_tol = float(action.get("orientation_tolerance_rad", 0.05))
+
+        sphere = SolidPrimitive()
+        sphere.type = SolidPrimitive.SPHERE
+        sphere.dimensions = [pos_tol]
+
+        region_pose = Pose()
+        region_pose.position = tool_pose.position
+        region_pose.orientation.w = 1.0
+
+        vol = BoundingVolume()
+        vol.primitives = [sphere]
+        vol.primitive_poses = [region_pose]
+
+        pos_c = PositionConstraint()
+        pos_c.header = Header(frame_id=base_frame)
+        pos_c.link_name = link_name
+        pos_c.target_point_offset = Vector3(x=0.0, y=0.0, z=0.0)
+        pos_c.constraint_region = vol
+        pos_c.weight = 1.0
+
+        ori_c = OrientationConstraint()
+        ori_c.header = Header(frame_id=base_frame)
+        ori_c.link_name = link_name
+        ori_c.orientation = tool_pose.orientation
+        ori_c.absolute_x_axis_tolerance = ori_tol
+        ori_c.absolute_y_axis_tolerance = ori_tol
+        ori_c.absolute_z_axis_tolerance = ori_tol
+        ori_c.weight = 1.0
+        ori_c.parameterization = OrientationConstraint.XYZ_EULER_ANGLES
+
+        constraints = Constraints()
+        constraints.name = str(action.get("name", "pose_goal"))
+        constraints.position_constraints = [pos_c]
+        constraints.orientation_constraints = [ori_c]
+        return constraints
+
+    def _build_motion_request_from_constraints(
+        self, action: Dict[str, Any], constraints: Constraints
+    ) -> MotionPlanRequest:
+        req = MotionPlanRequest()
+        req.workspace_parameters = self._workspace()
+        req.group_name = str(self.motion_cfg["planning_group"])
+        req.start_state.joint_state = self._moveit_start_joint_state()
+        req.start_state.is_diff = False
+        req.goal_constraints = [constraints]
+        req.num_planning_attempts = int(action.get("planning_attempts", self.motion_cfg["default_planning_attempts"]))
+        req.allowed_planning_time = self._planning_time(action)
+        req.max_velocity_scaling_factor = self._velocity(action)
+        req.max_acceleration_scaling_factor = self._acceleration(action)
+        return req
+
+    def _execute_pose_goal(self, action: Dict[str, Any], tool_pose: Pose) -> bool:
+        if not self._wait_for_joint_state(action):
+            return False
+        self._wait_for_joint_settle(action)
+        if not self._wait_for_action_server_abortable(self._move_group_client, 10.0):
+            self.get_logger().error(f"MoveGroup action is not available: {self.motion_cfg['move_group_action']}")
+            return False
+
+        goal = MoveGroup.Goal()
+        goal.request = self._build_motion_request_from_constraints(
+            action, self._build_pose_goal_constraints(action, tool_pose)
+        )
+        goal.planning_options = PlanningOptions()
+        goal.planning_options.plan_only = True
+        goal.planning_options.look_around = False
+        goal.planning_options.replan = True
+        goal.planning_options.replan_attempts = int(action.get("replan_attempts", 1))
+
+        self.get_logger().info("Sending pose goal to MoveIt.")
+        send_future = self._move_group_client.send_goal_async(goal)
+        self._spin_until_future_complete_abortable(send_future, 10.0)
+        goal_handle = send_future.result()
+        if goal_handle is None or not goal_handle.accepted:
+            self.get_logger().error("MoveIt pose goal rejected.")
+            return False
+
+        timeout = float(action.get("execution_timeout_sec", self._planning_time(action) + 30.0))
+        result_future = goal_handle.get_result_async()
+        self._spin_until_future_complete_abortable(result_future, timeout, goal_handle)
+        if not result_future.done() or result_future.result() is None:
+            self.get_logger().error("MoveIt pose goal planning timed out.")
+            return False
+
+        result = result_future.result().result
+        return self._execute_planned_move_group_result(action, result, log_label="MoveIt pose goal")
 
     def _execute_joint_goal(self, action: Dict[str, Any], positions: list[float]) -> bool:
         if not self._wait_for_joint_state(action):
             return False
+        self._wait_for_joint_settle(action)
         if not self._wait_for_action_server_abortable(self._move_group_client, 10.0):
             self.get_logger().error(f"MoveGroup action is not available: {self.motion_cfg['move_group_action']}")
             return False
@@ -6130,7 +7968,7 @@ class MotionManager(Node):
         goal = MoveGroup.Goal()
         goal.request = self._build_joint_motion_request(action, positions)
         goal.planning_options = PlanningOptions()
-        goal.planning_options.plan_only = False
+        goal.planning_options.plan_only = True
         goal.planning_options.look_around = False
         goal.planning_options.replan = True
         goal.planning_options.replan_attempts = int(action.get("replan_attempts", 1))
@@ -6143,22 +7981,20 @@ class MotionManager(Node):
             self.get_logger().error("MoveIt goal rejected.")
             return False
 
-        timeout = self._planning_time(action) + 30.0
+        timeout = float(action.get("execution_timeout_sec", self._planning_time(action) + 30.0))
         result_future = goal_handle.get_result_async()
         self._spin_until_future_complete_abortable(result_future, timeout, goal_handle)
         if not result_future.done() or result_future.result() is None:
-            self.get_logger().error("MoveIt planning/execution timed out.")
+            self.get_logger().error("MoveIt joint planning timed out.")
             return False
 
         result = result_future.result().result
-        if result.error_code.val != MoveItErrorCodes.SUCCESS:
-            self.get_logger().error(f"MoveIt failed: error_code={result.error_code.val}")
-            return False
-        return True
+        return self._execute_planned_move_group_result(action, result, log_label="MoveIt joint goal")
 
     def _execute_cartesian_path(self, action: Dict[str, Any], waypoints: list[Pose], min_fraction: float) -> Optional[bool]:
         if not self._wait_for_joint_state(action):
             return False
+        self._wait_for_joint_settle(action)
         if not self._wait_for_service_abortable(self._cartesian_client, 5.0):
             self.get_logger().error(
                 f"Cartesian path service is not available: {self.motion_cfg['cartesian_path_service']}"
@@ -6167,16 +8003,19 @@ class MotionManager(Node):
 
         req = GetCartesianPath.Request()
         req.header.frame_id = str(self.motion_cfg["base_frame"])
-        req.start_state.joint_state = self._latest_joint_state if self._latest_joint_state is not None else JointState()
+        req.start_state.joint_state = self._moveit_start_joint_state()
         req.start_state.is_diff = False
         req.group_name = str(self.motion_cfg["planning_group"])
-        req.link_name = str(self.motion_cfg["ik_link_name"])
+        req.link_name = str(action.get("ik_link_name") or self.motion_cfg["ik_link_name"]).strip()
         req.waypoints = waypoints
         req.max_step = float(action.get("max_step_m", self.motion_cfg["default_max_step_m"]))
         req.jump_threshold = float(action.get("jump_threshold", self.motion_cfg["default_jump_threshold"]))
-        req.avoid_collisions = bool(action.get("avoid_collisions", self.motion_cfg["avoid_collisions"]))
+        req.avoid_collisions = self._moveit_avoid_collisions(action)
 
-        self.get_logger().info(f"Computing Cartesian path through {len(waypoints)} waypoint(s).")
+        self.get_logger().info(
+            f"Computing Cartesian path through {len(waypoints)} waypoint(s) "
+            f"(avoid_collisions={req.avoid_collisions})."
+        )
         future = self._cartesian_client.call_async(req)
         self._spin_until_future_complete_abortable(future, self._planning_time(action) + 5.0)
         if not future.done() or future.result() is None:
@@ -6194,8 +8033,20 @@ class MotionManager(Node):
             return None
 
         trajectory = result.solution
-        min_seg = float(action.get("cartesian_retime_min_segment_sec", 0.04))
-        dur_stretch = float(action.get("cartesian_retime_duration_stretch", 1.0))
+        if "cartesian_retime_min_segment_sec" in action:
+            min_seg = float(action["cartesian_retime_min_segment_sec"])
+        elif self.robot_backend == "real":
+            min_seg = float(self.motion_cfg.get("real_cartesian_retime_min_segment_sec", 0.08))
+        else:
+            min_seg = 0.04
+
+        if "cartesian_retime_duration_stretch" in action:
+            dur_stretch = float(action["cartesian_retime_duration_stretch"])
+        elif self.robot_backend == "real":
+            dur_stretch = float(self.motion_cfg.get("real_cartesian_retime_duration_stretch", 2.0))
+        else:
+            dur_stretch = 1.0
+
         self._retime_trajectory(
             trajectory,
             self._velocity(action),
@@ -6205,6 +8056,7 @@ class MotionManager(Node):
         return self._execute_trajectory(trajectory, self._execution_timeout(action, trajectory))
 
     def _execute_trajectory(self, trajectory: RobotTrajectory, timeout: float) -> bool:
+        self._unwrap_continuous_joints_in_robot_trajectory(trajectory)
         if self._wait_for_action_server_abortable(self._execute_trajectory_client, 2.0):
             goal = ExecuteTrajectory.Goal()
             goal.trajectory = trajectory
@@ -6232,6 +8084,7 @@ class MotionManager(Node):
         return self._execute_joint_trajectory(trajectory.joint_trajectory, timeout)
 
     def _execute_joint_trajectory(self, trajectory: JointTrajectory, timeout: float) -> bool:
+        self._unwrap_continuous_joints_in_joint_trajectory(trajectory)
         if not self._wait_for_action_server_abortable(self._trajectory_client, 5.0):
             self.get_logger().error(f"Trajectory action is not available: {self.motion_cfg['trajectory_action']}")
             return False
@@ -6275,12 +8128,12 @@ class MotionManager(Node):
 
         req = GetPositionIK.Request()
         req.ik_request.group_name = str(self.motion_cfg["planning_group"])
-        req.ik_request.ik_link_name = str(self.motion_cfg["ik_link_name"])
+        req.ik_request.ik_link_name = str(action.get("ik_link_name", self.motion_cfg["ik_link_name"])).strip()
         req.ik_request.pose_stamped.header.frame_id = str(self.motion_cfg["base_frame"])
         req.ik_request.pose_stamped.pose = tool_pose
-        req.ik_request.robot_state.joint_state = self._latest_joint_state if self._latest_joint_state is not None else JointState()
+        req.ik_request.robot_state.joint_state = self._moveit_start_joint_state()
         req.ik_request.robot_state.is_diff = False
-        req.ik_request.avoid_collisions = bool(action.get("avoid_collisions", self.motion_cfg["avoid_collisions"]))
+        req.ik_request.avoid_collisions = self._moveit_avoid_collisions(action)
         ik_timeout = float(action.get("ik_timeout_sec", self.motion_cfg["default_ik_timeout_sec"]))
         req.ik_request.timeout = _duration_from_seconds(ik_timeout)
 
@@ -6306,6 +8159,8 @@ class MotionManager(Node):
             return None
 
     def _build_joint_motion_request(self, action: Dict[str, Any], positions: Iterable[float]) -> MotionPlanRequest:
+        # Align continuous-joint YAML/IK targets to live /joint_states wrap before MoveIt plans.
+        positions = self._align_continuous_joint_targets(list(positions))
         constraints = Constraints()
         constraints.name = str(action.get("name", "action_joint_goal"))
         tol = float(max(float(action.get("joint_tolerance_rad", self.motion_cfg["default_joint_tolerance_rad"])), 1e-4))
@@ -6321,9 +8176,8 @@ class MotionManager(Node):
         req = MotionPlanRequest()
         req.workspace_parameters = self._workspace()
         req.group_name = str(self.motion_cfg["planning_group"])
-        if self._latest_joint_state is not None:
-            req.start_state.joint_state = self._latest_joint_state
-            req.start_state.is_diff = False
+        req.start_state.joint_state = self._moveit_start_joint_state()
+        req.start_state.is_diff = False
         req.goal_constraints = [constraints]
         req.num_planning_attempts = int(action.get("planning_attempts", self.motion_cfg["default_planning_attempts"]))
         req.allowed_planning_time = self._planning_time(action)
@@ -6349,6 +8203,40 @@ class MotionManager(Node):
             return False
         names = set(self._latest_joint_state.name)
         return all(name in names for name in self.joint_names)
+
+    def _wait_for_joint_settle(self, action: Dict[str, Any]) -> None:
+        if not bool(action.get("wait_for_joint_settle", self.motion_cfg["wait_for_joint_settle"])):
+            return
+        timeout_sec = float(action.get("joint_settle_timeout_sec", self.motion_cfg["joint_settle_timeout_sec"]))
+        max_velocity = float(action.get("joint_settle_max_velocity_rad_s", self.motion_cfg["joint_settle_max_velocity_rad_s"]))
+        required_samples = max(
+            1,
+            int(action.get("joint_settle_required_samples", self.motion_cfg["joint_settle_required_samples"])),
+        )
+        deadline = time.monotonic() + max(0.0, timeout_sec)
+        settled_samples = 0
+        last_max_velocity = 0.0
+        while rclpy.ok() and time.monotonic() < deadline:
+            self._raise_if_abort()
+            js = self._latest_joint_state
+            if js is not None and js.name and js.velocity and len(js.velocity) == len(js.name):
+                vel_by_name = dict(zip(js.name, js.velocity))
+                try:
+                    last_max_velocity = max(abs(float(vel_by_name[name])) for name in self.joint_names)
+                except KeyError:
+                    last_max_velocity = float("inf")
+                if last_max_velocity <= max_velocity:
+                    settled_samples += 1
+                    if settled_samples >= required_samples:
+                        return
+                else:
+                    settled_samples = 0
+            rclpy.spin_once(self, timeout_sec=0.02)
+        if timeout_sec > 0.0:
+            self.get_logger().warn(
+                "Joint settle wait timed out before motion "
+                f"(max |qd|={last_max_velocity:.4f} rad/s > {max_velocity:.4f}); continuing."
+            )
 
     def _waypoint_action(self, action: Dict[str, Any], waypoint: Dict[str, Any], index: int) -> Dict[str, Any]:
         if not isinstance(waypoint, dict):
@@ -6409,6 +8297,7 @@ class MotionManager(Node):
         *,
         min_segment_sec: float = 0.04,
         duration_stretch: float = 1.0,
+        max_joint_vel_rad_s: float = 0.5,
     ) -> None:
         points = trajectory.joint_trajectory.points
         if not points:
@@ -6417,6 +8306,7 @@ class MotionManager(Node):
         velocity_scaling = max(float(velocity_scaling), 0.01)
         min_seg = max(0.01, float(min_segment_sec))
         stretch = max(0.5, float(duration_stretch))
+        max_joint_vel = max(0.05, float(max_joint_vel_rad_s))
         positions = [list(point.positions) for point in points]
         if any(not pos for pos in positions):
             return
@@ -6441,12 +8331,13 @@ class MotionManager(Node):
             point.time_from_start = _duration_from_seconds(times[index])
             velocities = []
             for joint_index in range(joint_count):
-                if index == 0 or index == len(points) - 1:
+                if index >= len(points) - 1:
                     velocities.append(0.0)
                     continue
-                dt = max(times[index + 1] - times[index - 1], 1e-6)
-                dq = float(positions[index + 1][joint_index]) - float(positions[index - 1][joint_index])
-                velocities.append(dq / dt)
+                dt = max(times[index + 1] - times[index], 1e-6)
+                dq = float(positions[index + 1][joint_index]) - float(positions[index][joint_index])
+                vel = dq / dt
+                velocities.append(float(max(-max_joint_vel, min(max_joint_vel, vel))))
             point.velocities = velocities
             point.accelerations = [0.0] * joint_count
 
@@ -6481,11 +8372,44 @@ class MotionManager(Node):
         last = points[-1].time_from_start
         return float(last.sec) + float(last.nanosec) * 1e-9
 
+    @staticmethod
+    def _normalize_speed_scale(value: Any) -> float:
+        scale = float(value)
+        if not math.isfinite(scale) or scale <= 0.0:
+            raise ValueError(f"speed_scale must be a finite number > 0, got {value!r}")
+        return min(scale, 5.0)
+
+    def _scale_motion_factor(self, value: Any, label: str, default: float) -> float:
+        base = _scaling(value, label, default)
+        scaled = min(1.0, base * self.speed_scale)
+        return max(scaled, 1e-4)
+
+    @staticmethod
+    def _uses_sequence_speed_scale(action: Dict[str, Any]) -> bool:
+        action_type = str(action.get("type", "")).lower()
+        return action_type in {"joint", "cartesian", "tool_delta", "cartesian_delta", "lift", "waypoint"}
+
     def _velocity(self, action: Dict[str, Any]) -> float:
-        return _scaling(action.get("velocity_scaling"), "velocity_scaling", self.motion_cfg["default_velocity_scaling"])
+        if not self._uses_sequence_speed_scale(action):
+            return _scaling(
+                action.get("velocity_scaling"),
+                "velocity_scaling",
+                self.motion_cfg["default_velocity_scaling"],
+            )
+        return self._scale_motion_factor(
+            action.get("velocity_scaling"),
+            "velocity_scaling",
+            self.motion_cfg["default_velocity_scaling"],
+        )
 
     def _acceleration(self, action: Dict[str, Any]) -> float:
-        return _scaling(
+        if not self._uses_sequence_speed_scale(action):
+            return _scaling(
+                action.get("acceleration_scaling"),
+                "acceleration_scaling",
+                self.motion_cfg["default_acceleration_scaling"],
+            )
+        return self._scale_motion_factor(
             action.get("acceleration_scaling"),
             "acceleration_scaling",
             self.motion_cfg["default_acceleration_scaling"],
@@ -6513,7 +8437,12 @@ class MotionManager(Node):
         out.setdefault("default_planning_time_sec", 5.0)
         out.setdefault("default_planning_attempts", 10)
         out.setdefault("default_joint_state_timeout_sec", 5.0)
+        out.setdefault("wait_for_joint_settle", True)
+        out.setdefault("joint_settle_timeout_sec", 1.0)
+        out.setdefault("joint_settle_max_velocity_rad_s", 0.02)
+        out.setdefault("joint_settle_required_samples", 3)
         out.setdefault("default_joint_tolerance_rad", 0.01)
+        out.setdefault("speed_scale", 1.0)
         out.setdefault("default_velocity_scaling", 0.15)
         out.setdefault("default_acceleration_scaling", 0.15)
         out.setdefault("default_execution_timeout_margin_sec", 10.0)
@@ -6580,10 +8509,21 @@ def _stdin_space_stop_listener(node: "MotionManager", shutdown: threading.Event)
 
 def main(args: Optional[list[str]] = None) -> None:
     rclpy.init(args=args)
-    node = MotionManager()
-
+    node: Optional[MotionManager] = None
     stdin_shutdown = threading.Event()
     stdin_thread: Optional[threading.Thread] = None
+
+    try:
+        node = MotionManager()
+    except (RuntimeError, ValueError, EOFError, KeyboardInterrupt, Exception) as exc:
+        if exc.__class__.__name__ == "ParserError" and exc.__class__.__module__.startswith("yaml"):
+            print(f"action_sequencer: invalid YAML in config_file — {exc}", file=sys.stderr, flush=True)
+        else:
+            print(f"action_sequencer: {exc}", file=sys.stderr, flush=True)
+        if rclpy.ok():
+            rclpy.shutdown()
+        return
+
     # Non-daemon: join in finally so tty settings are restored before process exit.
     if sys.stdin.isatty():
         stdin_thread = threading.Thread(
@@ -6617,12 +8557,15 @@ def main(args: Optional[list[str]] = None) -> None:
         if stdin_thread is not None:
             stdin_thread.join(timeout=2.0)
         signal.signal(signal.SIGINT, prev_sigint)
-        node.destroy_node()
+        if node is not None:
+            node.cleanup()
+            node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
     if exit_code != 0:
         print("Action sequence stopped or failed — see log output above.", file=sys.stderr, flush=True)
-    # Do not sys.exit(nonzero): Cursor/IDE terminals often close the tab when ros2 run fails.
+    # Non-zero exit lets run_action_sequencer.sh detect failure; that script always keeps the tab open.
+    raise SystemExit(exit_code)
 
 
 if __name__ == "__main__":
