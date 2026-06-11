@@ -22,6 +22,7 @@ YOLO_PREVIEW="${UR3_YOLO_PREVIEW:-true}"
 YOLO_MODEL="${UR3_YOLO_MODEL:-/home/wonny/ur3_control/runs/segment/ur3_multi_sim_real_ultra/weights/best.pt}"
 YOLO_TARGET="${UR3_YOLO_TARGET_CLASS:-}"
 REAL_SCENE_XACRO="${UR3_REAL_SCENE_XACRO:-/home/wonny/ur3_control/real_urdf/ur3_real_scene.urdf.xacro}"
+RVIZ_CONFIG="${UR3_RVIZ_CONFIG:-/home/wonny/ur3_control/rviz/real_ur3_moveit_fp.rviz}"
 MOVEIT_LAUNCH_FILE="/tmp/ur_moveit_real_scene_${USER}.launch.py"
 RGB_TOPIC="${UR3_RGB_TOPIC:-/camera/camera/color/image_raw}"
 DEPTH_TOPIC="${UR3_DEPTH_TOPIC:-/camera/camera/aligned_depth_to_color/image_raw}"
@@ -61,6 +62,7 @@ echo "  camera_preview: ${CAMERA_PREVIEW}"
 echo "  yolo_preview: ${YOLO_PREVIEW}"
 echo "  yolo_model: ${YOLO_MODEL}"
 echo "  real_scene_xacro: ${REAL_SCENE_XACRO}"
+echo "  rviz_config: ${RVIZ_CONFIG}"
 
 VISION_LOG="${HOME}/.ros/ur3_realsense_vision_preview_${USER}.log"
 
@@ -95,19 +97,29 @@ if [[ "${CAMERA_PREVIEW}" == "true" || "${YOLO_PREVIEW}" == "true" ]]; then
   fi
 fi
 
-python3 - "${MOVEIT_LAUNCH_FILE}" "${REAL_SCENE_XACRO}" <<'PY'
+python3 - "${MOVEIT_LAUNCH_FILE}" "${REAL_SCENE_XACRO}" "${RVIZ_CONFIG}" <<'PY'
 import sys
 from pathlib import Path
 
 src = Path("/opt/ros/humble/share/ur_moveit_config/launch/ur_moveit.launch.py")
 dst = Path(sys.argv[1])
 real_scene_xacro = sys.argv[2]
+rviz_config = sys.argv[3]
 text = src.read_text()
 old_desc = '''            PathJoinSubstitution([FindPackageShare(description_package), "urdf", description_file]),'''
 new_desc = f'''            "{real_scene_xacro}",'''
 if old_desc not in text:
     raise SystemExit("Could not patch ur_moveit.launch.py description xacro path")
 patched = text.replace(old_desc, new_desc)
+old_rviz = '''    rviz_config_file = PathJoinSubstitution(
+        [FindPackageShare(moveit_config_package), "rviz", "view_robot.rviz"]
+    )'''
+new_rviz = f'''    rviz_config_file = PathJoinSubstitution(
+        ["{rviz_config}"]
+    )'''
+if old_rviz not in patched:
+    raise SystemExit("Could not patch ur_moveit.launch.py rviz config path")
+patched = patched.replace(old_rviz, new_rviz)
 srdf_marker = 'FindPackageShare(moveit_config_package), "srdf", moveit_config_file'
 if srdf_marker not in patched or "/u/r/./s/r/d/f" in patched:
     raise SystemExit("Refusing to write launch file: SRDF xacro path looks corrupted")
