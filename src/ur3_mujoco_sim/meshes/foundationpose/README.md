@@ -29,6 +29,6 @@ source ~/isaac_ros_assets/setup_foundationpose_env.sh
 
 ## Isaac ROS `symmetry_axes` (cylinders)
 
-Cylinders have a continuous symmetry about their **geometric axis**. After OBJ export, verify which local axis (`x`, `y`, or `z`) aligns with the cylinder axis in your mesh (e.g. open in MeshLab). Then set `symmetry_axes` in `isaac_ros_foundationpose` accordingly (e.g. `z_full` for full rotation steps about local +Z). Boxes typically omit symmetry.
+Cylinders have continuous symmetry about mesh **+Y** — use `y_full` in `symmetry_axes_by_class` (see `ur3_action_sequence.yaml`). The sequencer exports `FOUNDATION_POSE_SYMMETRY_AXES` when launching Isaac.
 
 See: [Isaac FoundationPose mesh center](https://nvidia-isaac-ros.github.io/concepts/pose_estimation/foundationpose/tutorial_shift_mesh_center.html).

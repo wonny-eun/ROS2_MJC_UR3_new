@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Start YOLO→Detection2DArray + object point cloud for Isaac FoundationPose + RViz."""
+"""YOLO→Detection + segmentation for Isaac FoundationPose using Intel RealSense D435i topics."""
 
 import os
 
@@ -8,7 +8,6 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description() -> LaunchDescription:
-    # Prefer same YOLO path as ur3_pick_task YAML; override via launch arg in a wrapper if needed.
     default_yolo = "/home/wonny/ur3_control/runs/segment/ur3_multi_sim_real_ultra/weights/best.pt"
     yolo_path = os.environ.get("YOLO_MODEL_PATH", default_yolo)
 
@@ -20,17 +19,15 @@ def generate_launch_description() -> LaunchDescription:
                 name="foundation_pose_bridge",
                 output="screen",
                 parameters=[
-                    {"use_sim_time": True},
+                    {"use_sim_time": False},
                     {
                         "yolo_model_path": yolo_path,
-                        "rgb_topic": "/rl_camera/noisy/color",
-                        "depth_topic": "/rl_camera/noisy/depth",
-                        "camera_info_topic": "/rl_camera/camera_info",
+                        "rgb_topic": "/camera/camera/color/image_raw",
+                        "depth_topic": "/camera/camera/aligned_depth_to_color/image_raw",
+                        "camera_info_topic": "/camera/camera/color/camera_info",
                         "camera_frame_fallback": "camera_color_optical_frame",
                         "detection_topic": "/foundation_pose/yolo_detection2_d_array",
                         "object_cloud_topic": "/foundation_pose/object_cloud",
-                        # target_class / yolo_exclusive_scene_classes set by action_sequencer
-                        # via /foundation_pose_bridge/set_parameters before trigger.
                         "target_class": "Cylinder_1",
                         "min_confidence": 0.02,
                         "predict_conf_floor": 0.01,
@@ -39,7 +36,7 @@ def generate_launch_description() -> LaunchDescription:
                         "segmentation_topic": "/segmentation",
                         "segmentation_mask_width": 640,
                         "segmentation_mask_height": 480,
-                    }
+                    },
                 ],
             ),
         ]

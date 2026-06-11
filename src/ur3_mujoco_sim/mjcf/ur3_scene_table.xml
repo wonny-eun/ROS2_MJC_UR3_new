@@ -82,33 +82,33 @@
 
     <body name="cylinder_1_obj" pos="-0.3 0.08 0.9">
       <!-- Do not inherit UR3_RG2 default joint damping=10 (would heavily damp free motion). -->
-      <joint type="free" damping="0" frictionloss="0.0001" armature="0.0001"/>
+      <joint type="free" damping="0" frictionloss="0.0001"/>
       <inertial pos="0 0 0.0185" mass="0.059747" diaginertia="10.676195e-06 10.676194e-06 7.761395e-06"/>
       <geom name="cylinder_1_vis" type="mesh" mesh="cylinder_1_mesh" pos="0 0 0" material="aluminum_1_mat"
             contype="0" conaffinity="0"/>
       <geom name="cylinder_1_col" type="mesh" mesh="cylinder_1_col_mesh" pos="0 0 0"
-            condim="4" friction="0.2 0.02 0.001" solimp="0.95 0.99 0.001 0.5 2" solref="0.01 1"
+            condim="6" friction="1.8 0.05 0.02" solimp="0.9 0.95 0.001 0.5 2" solref="0.005 1"
             contype="1" conaffinity="1" rgba="1 1 1 0"/>
     </body>
 
     <body name="cylinder_2_obj" pos="-0.3 -0.08 0.9">
-      <joint type="free" damping="0.001" frictionloss="0.0001" armature="0.0001"/>
+      <joint type="free" damping="0" frictionloss="0.0001"/>
       <inertial pos="0 0 0.010337" mass="0.04781" diaginertia="7.401e-06 7.401e-06 9.390e-06"/>
       <geom name="cylinder_2_vis" type="mesh" mesh="cylinder_2_mesh" pos="0 0 0" material="copper_mat"
             contype="0" conaffinity="0"/>
       <geom name="cylinder_2_col" type="mesh" mesh="cylinder_2_col_mesh" pos="0 0 0"
-            condim="4" friction="0.2 0.02 0.001" solimp="0.95 0.99 0.001 0.5 2" solref="0.01 1"
+            condim="6" friction="1.2 0.05 0.02" solimp="0.9 0.95 0.001 0.5 2" solref="0.005 1"
             contype="1" conaffinity="1" rgba="1 1 1 0"/>
     </body>
 
     <body name="square_1_obj" pos="-0.22 0.08 0.9">
-      <joint type="free" damping="0.001" frictionloss="0.0001" armature="0.0001"/>
-      <inertial pos="-0.007225 0 0.01" mass="0.060153" diaginertia="4.291e-06 1.339e-05 1.334e-05"/>
+      <joint type="free" damping="0" frictionloss="0.0001"/>
+      <inertial pos="-0.007225 0 0.0" mass="0.060153" diaginertia="4.291e-06 1.339e-05 1.334e-05"/>
       <geom name="square_1_vis" type="mesh" mesh="square_1_mesh" pos="0 0 0" material="aluminum_2_mat"
             contype="0" conaffinity="0"/>
       <geom name="square_1_col" type="mesh" mesh="square_1_col_mesh" pos="0 0 0"
-            condim="4" friction="0.2 0.02 0.001" solimp="0.95 0.99 0.001 0.5 2" solref="0.01 1"
-            contype="1" conaffinity="1" rgba="1 1 1 0"/>
+            condim="6" friction="1.2 0.05 0.02" solimp="0.9 0.95 0.001 0.5 2" solref="0.005 1"
+            contype="1" conaffinity="1" rgba="1 1 1 0" />
     </body>
 
   </worldbody>
@@ -121,16 +121,30 @@
     <!-- Runtime attachment to gripper Case_Base via /mujoco/weld/module_1_plate_attach_case_base -->
     <weld name="module_1_plate_case_base" body1="Module_1_Plate" body2="Case_Base" solref="0.001 1" active="false"/>
     <!-- Module_2 tips start table/world-held, then sequence switches them to finger-slider welds. -->
-    <weld name="module_2_l_tip_world" body1="L_Tip" solref="0.001 1" active="true"/>
-    <weld name="module_2_r_tip_world" body1="R_Tip" solref="0.001 1" active="true"/>
-    <weld name="module_2_l_tip_l_slider" body1="L_Slider" body2="L_Tip" relpose="0 -0.053 0.0905 1 0 0 0" solref="0.001 1" active="false"/>
-    <weld name="module_2_r_tip_r_slider" body1="R_Slider" body2="R_Tip" relpose="0 0.053 0.0905 1 0 0 0" solref="0.001 1" active="false"/>
+    <weld name="module_2_l_tip_world_Box_1" body1="L_Tip_Box_1" solref="0.001 1" active="true"/>
+    <weld name="module_2_r_tip_world_Box_1" body1="R_Tip_Box_1" solref="0.001 1" active="true"/>
+    <weld name="module_2_l_tip_l_slider_Box_1" body1="L_Slider" body2="L_Tip_Box_1" relpose="0 -0.053 0.0905 1 0 0 0" solref="0.001 1" active="false"/>
+    <weld name="module_2_r_tip_r_slider_Box_1" body1="R_Slider" body2="R_Tip_Box_1" relpose="0 0.053 0.0905 1 0 0 0" solref="0.001 1" active="false"/>
+    
+    <weld name="module_2_l_tip_world_Cylinder_1" body1="L_Tip_Cylinder_1" solref="0.001 1" active="true"/>
+    <weld name="module_2_r_tip_world_Cylinder_1" body1="R_Tip_Cylinder_1" solref="0.001 1" active="true"/>
+    <weld name="module_2_l_tip_l_slider_Cylinder_1" body1="L_Slider" body2="L_Tip_Cylinder_1" relpose="0 -0.053 0.0905 1 0 0 0" solref="0.001 1" active="false"/>
+    <weld name="module_2_r_tip_r_slider_Cylinder_1" body1="R_Slider" body2="R_Tip_Cylinder_1" relpose="0 0.053 0.0905 1 0 0 0" solref="0.001 1" active="false"/>
+    
+    <weld name="module_2_l_tip_world_Cylinder_2" body1="L_Tip_Cylinder_2" solref="0.001 1" active="true"/>
+    <weld name="module_2_r_tip_world_Cylinder_2" body1="R_Tip_Cylinder_2" solref="0.001 1" active="true"/>
+    <weld name="module_2_l_tip_l_slider_Cylinder_2" body1="L_Slider" body2="L_Tip_Cylinder_2" relpose="0 -0.053 0.0905 1 0 0 0" solref="0.001 1" active="false"/>
+    <weld name="module_2_r_tip_r_slider_Cylinder_2" body1="R_Slider" body2="R_Tip_Cylinder_2" relpose="0 0.053 0.0905 1 0 0 0" solref="0.001 1" active="false"/>
   </equality>
 
   <contact>
     <exclude body1="Module_1_Plate" body2="Case_Base"/>
-    <exclude body1="L_Slider" body2="L_Tip"/>
-    <exclude body1="R_Slider" body2="R_Tip"/>
+    <exclude body1="L_Slider" body2="L_Tip_Box_1"/>
+    <exclude body1="R_Slider" body2="R_Tip_Box_1"/>
+    <exclude body1="L_Slider" body2="L_Tip_Cylinder_1"/>
+    <exclude body1="R_Slider" body2="R_Tip_Cylinder_1"/>
+    <exclude body1="L_Slider" body2="L_Tip_Cylinder_2"/>
+    <exclude body1="R_Slider" body2="R_Tip_Cylinder_2"/>
   </contact>
 
 </mujoco>

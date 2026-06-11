@@ -32,15 +32,24 @@ def _apply_depth_shadow(
     valid_pair = valid[:, :-1] & valid[:, 1:]
     direction = direction.lower()
 
+    def _iter_edge_pixels(rows: np.ndarray, cols: np.ndarray, depths: np.ndarray):
+        """Yield (row, col, z) for 0, 1, or N edge pixels (avoids 0-d .tolist() scalars breaking zip)."""
+        for row, col, z in zip(
+            np.atleast_1d(rows).ravel(),
+            np.atleast_1d(cols).ravel(),
+            np.atleast_1d(depths).ravel(),
+        ):
+            yield int(row), int(col), float(z)
+
     if direction == "left":
         # Background is on the left, foreground object edge is on the right.
         edge = valid_pair & ((left - right) > edge_threshold_m)
         edge_rows, edge_cols = np.nonzero(edge)
         fg_depth = right[edge_rows, edge_cols]
-        for row, col, z in zip(edge_rows.tolist(), edge_cols.tolist(), fg_depth.tolist()):
-            if max_depth_m > 0.0 and float(z) > max_depth_m:
+        for row, col, z in _iter_edge_pixels(edge_rows, edge_cols, fg_depth):
+            if max_depth_m > 0.0 and z > max_depth_m:
                 continue
-            radius = int(np.clip(round(k_px_m / max(float(z), 1e-6)), min_radius_px, max_radius_px))
+            radius = int(np.clip(round(k_px_m / max(z, 1e-6)), min_radius_px, max_radius_px))
             x0 = max(0, col - radius + 1)
             out[row, x0 : col + 1] = 0.0
     elif direction == "right":
@@ -49,10 +58,10 @@ def _apply_depth_shadow(
         edge_rows, edge_cols = np.nonzero(edge)
         fg_depth = left[edge_rows, edge_cols]
         width = depth.shape[1]
-        for row, col, z in zip(edge_rows.tolist(), edge_cols.tolist(), fg_depth.tolist()):
-            if max_depth_m > 0.0 and float(z) > max_depth_m:
+        for row, col, z in _iter_edge_pixels(edge_rows, edge_cols, fg_depth):
+            if max_depth_m > 0.0 and z > max_depth_m:
                 continue
-            radius = int(np.clip(round(k_px_m / max(float(z), 1e-6)), min_radius_px, max_radius_px))
+            radius = int(np.clip(round(k_px_m / max(z, 1e-6)), min_radius_px, max_radius_px))
             x0 = col + 1
             x1 = min(width, x0 + radius)
             out[row, x0:x1] = 0.0

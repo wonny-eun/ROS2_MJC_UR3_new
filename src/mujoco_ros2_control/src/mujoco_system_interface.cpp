@@ -20,6 +20,7 @@
 #include "mujoco_ros2_simulation/mujoco_system_interface.hpp"
 #include "array_safety.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <chrono>
 #include <cstdint>
@@ -551,6 +552,7 @@ hardware_interface::CallbackReturn MujocoSystemInterface::on_init(const hardware
   tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*mujoco_node_);
 
   register_module_plate_weld_interfaces();
+  register_gripper_hybrid_interfaces();
 
   // Ready cameras
   RCLCPP_INFO(rclcpp::get_logger("MujocoSystemInterface"), "Initializing cameras...");
@@ -973,6 +975,13 @@ hardware_interface::return_type MujocoSystemInterface::write(const rclcpp::Time&
     {
       mj_data_->ctrl[joint_state.mj_actuator_id] = joint_state.effort_command;
     }
+  }
+
+  if (gripper_hybrid_registered_ && gripper_hybrid_state_ != GripperHybridState::Idle &&
+      gripper_hybrid_state_ != GripperHybridState::Done &&
+      gripper_hybrid_state_ != GripperHybridState::Failed)
+  {
+    step_gripper_hybrid(mj_model_->opt.timestep);
   }
 
   return hardware_interface::return_type::OK;
@@ -1514,6 +1523,113 @@ void writeWeldEqData(mjtNum* slot, const Eigen::Vector3d& t_plate_frame, const E
   slot[10] = 1.0;
 }
 
+constexpr const char* kModule1PlateFreeJoint = "weld_free_joint";
+
+int find_free_joint_id(mjModel* model, const char* primary, const char* legacy = nullptr)
+{
+  int jnt = mj_name2id(model, mjOBJ_JOINT, primary);
+  if (jnt < 0 && legacy != nullptr)
+  {
+    jnt = mj_name2id(model, mjOBJ_JOINT, legacy);
+  }
+  if (jnt < 0 || model->jnt_type[jnt] != mjJNT_FREE)
+  {
+    return -1;
+  }
+  return jnt;
+}
+
+bool snap_free_joint_to_qpos0(mjModel* model, mjData* data, const char* joint_name, const char* legacy = nullptr)
+{
+  const int jnt = find_free_joint_id(model, joint_name, legacy);
+  if (jnt < 0)
+  {
+    return false;
+  }
+  const int adr = model->jnt_qposadr[jnt];
+  for (int k = 0; k < 7; ++k)
+  {
+    data->qpos[adr + k] = model->qpos0[adr + k];
+  }
+  const int vadr = model->jnt_dofadr[jnt];
+  for (int k = 0; k < 6; ++k)
+  {
+    data->qvel[vadr + k] = 0.0;
+  }
+  return true;
+}
+
+Eigen::Isometry3d mjcf_body_pose_in_world(mjModel* model, int body_id)
+{
+  Eigen::Isometry3d T = Eigen::Isometry3d::Identity();
+  while (body_id > 0)
+  {
+    const Eigen::Quaterniond q_local(model->body_quat[4 * body_id + 0], model->body_quat[4 * body_id + 1],
+                                     model->body_quat[4 * body_id + 2], model->body_quat[4 * body_id + 3]);
+    const Eigen::Vector3d p_local(model->body_pos[3 * body_id + 0], model->body_pos[3 * body_id + 1],
+                                  model->body_pos[3 * body_id + 2]);
+    T = Eigen::Translation3d(p_local) * q_local * T;
+    body_id = model->body_parentid[body_id];
+  }
+  return T;
+}
+
+bool snap_free_body_to_mjcf_home(mjModel* model, mjData* data, int body_id, const char* joint_name,
+                                 const char* legacy = nullptr)
+{
+  const int jnt = find_free_joint_id(model, joint_name, legacy);
+  if (jnt < 0 || body_id < 0)
+  {
+    return false;
+  }
+  const Eigen::Isometry3d T_world_body = mjcf_body_pose_in_world(model, body_id);
+  const Eigen::Quaterniond q = Eigen::Quaterniond(T_world_body.rotation());
+  const Eigen::Vector3d p = T_world_body.translation();
+  const int adr = model->jnt_qposadr[jnt];
+  data->qpos[adr + 0] = p.x();
+  data->qpos[adr + 1] = p.y();
+  data->qpos[adr + 2] = p.z();
+  data->qpos[adr + 3] = q.w();
+  data->qpos[adr + 4] = q.x();
+  data->qpos[adr + 5] = q.y();
+  data->qpos[adr + 6] = q.z();
+  const int vadr = model->jnt_dofadr[jnt];
+  for (int k = 0; k < 6; ++k)
+  {
+    data->qvel[vadr + k] = 0.0;
+  }
+  return true;
+}
+
+void capture_eq_home(mjtNum* dest, const mjModel* model, int eq_id)
+{
+  if (eq_id < 0)
+  {
+    return;
+  }
+  std::memcpy(dest, model->eq_data + eq_id * mjNEQDATA, mjNEQDATA * sizeof(mjtNum));
+}
+
+void restore_eq_home(mjModel* model, int eq_id, const mjtNum* src)
+{
+  if (eq_id < 0)
+  {
+    return;
+  }
+  std::memcpy(model->eq_data + eq_id * mjNEQDATA, src, mjNEQDATA * sizeof(mjtNum));
+}
+
+void write_world_weld_eq_from_body_pose(mjModel* model, mjData* data, int eq_id, int body_id)
+{
+  const Eigen::Matrix3d R_body = mjBodyRotWorld(data, body_id);
+  const Eigen::Vector3d p_body = mjBodyPosWorld(data, body_id);
+  const Eigen::Vector3d weld_t = R_body.transpose() * (-p_body);
+  Eigen::Quaterniond qweld(R_body);
+  qweld.normalize();
+  mjtNum* eq_slot = model->eq_data + eq_id * mjNEQDATA;
+  writeWeldEqData(eq_slot, weld_t, qweld);
+}
+
 /** World pose of body frame as a 4x4 transform (columns of R are body axes in world). */
 Eigen::Matrix4d mjBodyPoseWorld(const mjData* d, const int body_id)
 {
@@ -1628,6 +1744,8 @@ void MujocoSystemInterface::register_module_plate_weld_interfaces()
   }
 
   module_plate_weld_registered_ = true;
+  module_plate_body_id_ = mj_name2id(mj_model_, mjOBJ_BODY, "Module_1_Plate");
+  capture_eq_home(module_plate_world_eq_home_.data(), mj_model_, module_plate_weld_world_eq_);
   module_plate_weld_pose_sub_ = mujoco_node_->create_subscription<geometry_msgs::msg::PoseStamped>(
       "/mujoco/weld/module_1_plate_case_offset", rclcpp::QoS(10),
       std::bind(&MujocoSystemInterface::on_module_plate_weld_pose, this, std::placeholders::_1));
@@ -1642,12 +1760,47 @@ void MujocoSystemInterface::register_module_plate_weld_interfaces()
       std::bind(&MujocoSystemInterface::reset_module1_plate_table_hold_srv, this, std::placeholders::_1,
                 std::placeholders::_2));
 
-  module2_l_tip_world_eq_ = mj_name2id(mj_model_, mjOBJ_EQUALITY, "module_2_l_tip_world");
-  module2_r_tip_world_eq_ = mj_name2id(mj_model_, mjOBJ_EQUALITY, "module_2_r_tip_world");
-  module2_l_tip_slider_eq_ = mj_name2id(mj_model_, mjOBJ_EQUALITY, "module_2_l_tip_l_slider");
-  module2_r_tip_slider_eq_ = mj_name2id(mj_model_, mjOBJ_EQUALITY, "module_2_r_tip_r_slider");
-  if (module2_l_tip_world_eq_ >= 0 && module2_r_tip_world_eq_ >= 0 && module2_l_tip_slider_eq_ >= 0 &&
-      module2_r_tip_slider_eq_ >= 0)
+  if (!mujoco_node_->has_parameter("module2_tip_object"))
+  {
+    mujoco_node_->declare_parameter<std::string>("module2_tip_object", "Box_1");
+  }
+
+  module2_tip_weld_sets_.clear();
+  const auto register_tip_set = [&](const char* suffix, const char* l_body, const char* r_body,
+                                    const char* l_joint, const char* r_joint) {
+    const std::string suf(suffix);
+    Module2TipWeldSet set;
+    set.l_world_eq = mj_name2id(mj_model_, mjOBJ_EQUALITY, ("module_2_l_tip_world_" + suf).c_str());
+    set.r_world_eq = mj_name2id(mj_model_, mjOBJ_EQUALITY, ("module_2_r_tip_world_" + suf).c_str());
+    set.l_slider_eq = mj_name2id(mj_model_, mjOBJ_EQUALITY, ("module_2_l_tip_l_slider_" + suf).c_str());
+    set.r_slider_eq = mj_name2id(mj_model_, mjOBJ_EQUALITY, ("module_2_r_tip_r_slider_" + suf).c_str());
+    set.l_body_id = mj_name2id(mj_model_, mjOBJ_BODY, l_body);
+    set.r_body_id = mj_name2id(mj_model_, mjOBJ_BODY, r_body);
+    set.l_free_joint = l_joint;
+    set.r_free_joint = r_joint;
+    if (set.l_world_eq >= 0 && set.r_world_eq >= 0 && set.l_slider_eq >= 0 && set.r_slider_eq >= 0 &&
+        set.l_body_id >= 0 && set.r_body_id >= 0)
+    {
+      capture_eq_home(set.l_world_eq_home.data(), mj_model_, set.l_world_eq);
+      capture_eq_home(set.r_world_eq_home.data(), mj_model_, set.r_world_eq);
+      module2_tip_weld_sets_.emplace(suffix, set);
+    }
+    else
+    {
+      RCLCPP_WARN(logger,
+                  "Module_2 tip weld set '%s' incomplete in MJCF (bodies %s/%s, equalities "
+                  "module_2_*_tip_*_%s); skipping.",
+                  suffix, l_body, r_body, suffix);
+    }
+  };
+  register_tip_set("Box_1", "L_Tip_Box_1", "R_Tip_Box_1", "weld_free_joint_L_Tip_Box_1",
+                   "weld_free_joint_R_Tip_Box_1");
+  register_tip_set("Cylinder_1", "L_Tip_Cylinder_1", "R_Tip_Cylinder_1", "weld_free_joint_L_Tip_Cylinder_1",
+                   "weld_free_joint_R_Tip_Cylinder_1");
+  register_tip_set("Cylinder_2", "L_Tip_Cylinder_2", "R_Tip_Cylinder_2", "weld_free_joint_L_Tip_Cylinder_2",
+                   "weld_free_joint_R_Tip_Cylinder_2");
+
+  if (!module2_tip_weld_sets_.empty())
   {
     module2_tips_weld_registered_ = true;
     module2_tips_attach_fingers_srv_ = mujoco_node_->create_service<std_srvs::srv::Trigger>(
@@ -1662,18 +1815,29 @@ void MujocoSystemInterface::register_module_plate_weld_interfaces()
   else
   {
     RCLCPP_WARN(logger,
-                "Module_2 tip weld equalities not found in MJCF (expected names "
-                "'module_2_l_tip_world', 'module_2_r_tip_world', "
-                "'module_2_l_tip_l_slider', 'module_2_r_tip_r_slider'); tip weld service disabled.");
+                "Module_2 tip weld equalities not found in MJCF (expected per-object names like "
+                "module_2_l_tip_world_Box_1, module_2_l_tip_l_slider_Cylinder_1, ...); tip weld services "
+                "disabled.");
   }
 
   RCLCPP_INFO(logger,
               "Module_1_Plate: subscribe /mujoco/weld/module_1_plate_case_offset; services "
-              "/mujoco/weld/module_1_plate_reset_table_hold (snap to table), "
+              "/mujoco/weld/module_1_plate_reset_table_hold (snap to MJCF home/world), "
               "/mujoco/weld/module_1_plate_attach_case_base (snap to gripper), "
               "/mujoco/weld/module_2_tips_attach_fingers, /mujoco/weld/module_2_tips_detach_world "
-              "(switch both tips if available). "
+              "(per-object tips via mujoco_node parameter module2_tip_object: Box_1, Cylinder_1, Cylinder_2). "
               "Use same ROS_DOMAIN_ID in all terminals.");
+}
+
+const MujocoSystemInterface::Module2TipWeldSet* MujocoSystemInterface::active_module2_tip_weld_set(
+    const std::string& suffix) const
+{
+  const auto it = module2_tip_weld_sets_.find(suffix);
+  if (it == module2_tip_weld_sets_.end())
+  {
+    return nullptr;
+  }
+  return &it->second;
 }
 
 void MujocoSystemInterface::on_module_plate_weld_pose(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
@@ -1740,7 +1904,7 @@ void MujocoSystemInterface::attach_module1_plate_to_case_base_srv(
 
   auto logger = rclcpp::get_logger("MujocoSystemInterface");
 
-  const int jnt_free = mj_name2id(mj_model_, mjOBJ_JOINT, "module_1_plate_free");
+  const int jnt_free = find_free_joint_id(mj_model_, kModule1PlateFreeJoint, "module_1_plate_free");
 
   if (frame_ok)
   {
@@ -1858,35 +2022,40 @@ void MujocoSystemInterface::reset_module1_plate_table_hold_srv(
 
   const std::unique_lock<std::recursive_mutex> sim_lock(*sim_mutex_);
 
-  const int jnt_free = mj_name2id(mj_model_, mjOBJ_JOINT, "module_1_plate_free");
-  if (jnt_free < 0 || mj_model_->jnt_type[jnt_free] != mjJNT_FREE)
+  if (module_plate_body_id_ < 0)
   {
     response->success = false;
-    response->message = "Joint module_1_plate_free not found or not a free joint.";
+    response->message = "Module_1_Plate body not found in MJCF.";
     return;
   }
 
-  const int adr = mj_model_->jnt_qposadr[jnt_free];
-  for (int k = 0; k < 7; ++k)
-  {
-    mj_data_->qpos[adr + k] = mj_model_->qpos0[adr + k];
-  }
-
-  const int vadr = mj_model_->jnt_dofadr[jnt_free];
-  for (int k = 0; k < 6; ++k)
-  {
-    mj_data_->qvel[vadr + k] = 0.0;
-  }
-
+  // Release from gripper weld and put the plate back at its MJCF storage pose.
   mj_data_->eq_active[module_plate_weld_case_eq_] = 0;
+  mj_data_->eq_active[module_plate_weld_world_eq_] = 0;
+
+  if (!snap_free_body_to_mjcf_home(
+          mj_model_, mj_data_, module_plate_body_id_, kModule1PlateFreeJoint, "module_1_plate_free"))
+  {
+    response->success = false;
+    response->message = "Joint weld_free_joint (Module_1_Plate free joint) not found or not a free joint.";
+    return;
+  }
+
+  mj_forward(mj_model_, mj_data_);
+
+  write_world_weld_eq_from_body_pose(
+      mj_model_, mj_data_, module_plate_weld_world_eq_, module_plate_body_id_);
   mj_data_->eq_active[module_plate_weld_world_eq_] = 1;
 
   mj_forward(mj_model_, mj_data_);
 
+  const Eigen::Vector3d p = mjBodyPosWorld(mj_data_, module_plate_body_id_);
   response->success = true;
   response->message =
-      "Module_1_Plate reset to compiled default pose (MJCF/qpos0), zero velocity; world weld enabled, "
-      "gripper weld disabled. Call before pick if startup drift bothers you.";
+      "Module_1_Plate released from Case_Base and world-welded at MJCF home pose "
+      "(xyz=" +
+      std::to_string(p.x()) + ", " + std::to_string(p.y()) + ", " + std::to_string(p.z()) +
+      "); gripper weld disabled.";
 }
 
 void MujocoSystemInterface::attach_module2_tips_to_fingers_srv(
@@ -1904,15 +2073,41 @@ void MujocoSystemInterface::attach_module2_tips_to_fingers_srv(
     return;
   }
 
+  const std::string tip_object = mujoco_node_->get_parameter("module2_tip_object").as_string();
+  const Module2TipWeldSet* active = active_module2_tip_weld_set(tip_object);
+  if (active == nullptr)
+  {
+    response->success = false;
+    response->message = "Unknown or incomplete module2_tip_object '" + tip_object +
+                        "'. Set to Box_1, Cylinder_1, or Cylinder_2 before calling attach.";
+    return;
+  }
+
   const std::unique_lock<std::recursive_mutex> sim_lock(*sim_mutex_);
 
-  mj_data_->eq_active[module2_l_tip_world_eq_] = 0;
-  mj_data_->eq_active[module2_r_tip_world_eq_] = 0;
-  mj_data_->eq_active[module2_l_tip_slider_eq_] = 1;
-  mj_data_->eq_active[module2_r_tip_slider_eq_] = 1;
+  for (const auto& entry : module2_tip_weld_sets_)
+  {
+    const bool is_active = (entry.first == tip_object);
+    const Module2TipWeldSet& set = entry.second;
+    if (set.l_world_eq >= 0)
+    {
+      mj_data_->eq_active[set.l_world_eq] = is_active ? 0 : 1;
+    }
+    if (set.r_world_eq >= 0)
+    {
+      mj_data_->eq_active[set.r_world_eq] = is_active ? 0 : 1;
+    }
+    if (set.l_slider_eq >= 0)
+    {
+      mj_data_->eq_active[set.l_slider_eq] = is_active ? 1 : 0;
+    }
+    if (set.r_slider_eq >= 0)
+    {
+      mj_data_->eq_active[set.r_slider_eq] = is_active ? 1 : 0;
+    }
+  }
 
-  const char* free_joint_names[] = { "weld_free_joint_L_Tip", "weld_free_joint_R_Tip" };
-  for (const char* joint_name : free_joint_names)
+  for (const char* joint_name : { active->l_free_joint.c_str(), active->r_free_joint.c_str() })
   {
     const int jnt_free = mj_name2id(mj_model_, mjOBJ_JOINT, joint_name);
     if (jnt_free >= 0 && mj_model_->jnt_type[jnt_free] == mjJNT_FREE)
@@ -1928,7 +2123,7 @@ void MujocoSystemInterface::attach_module2_tips_to_fingers_srv(
   mj_forward(mj_model_, mj_data_);
 
   response->success = true;
-  response->message = "Module_2 L_Tip and R_Tip switched from world hold to finger slider welds.";
+  response->message = "Module_2 tips for '" + tip_object + "' switched from world hold to finger slider welds.";
 }
 
 void MujocoSystemInterface::detach_module2_tips_to_world_srv(
@@ -1946,57 +2141,392 @@ void MujocoSystemInterface::detach_module2_tips_to_world_srv(
     return;
   }
 
-  const std::unique_lock<std::recursive_mutex> sim_lock(*sim_mutex_);
-
-  const int l_tip_body = mj_name2id(mj_model_, mjOBJ_BODY, "L_Tip");
-  const int r_tip_body = mj_name2id(mj_model_, mjOBJ_BODY, "R_Tip");
-  if (l_tip_body < 0 || r_tip_body < 0)
+  const std::string tip_object = mujoco_node_->get_parameter("module2_tip_object").as_string();
+  const Module2TipWeldSet* active = active_module2_tip_weld_set(tip_object);
+  if (active == nullptr)
   {
     response->success = false;
-    response->message = "Bodies L_Tip or R_Tip not found in model.";
+    response->message = "Unknown or incomplete module2_tip_object '" + tip_object +
+                        "'. Set to Box_1, Cylinder_1, or Cylinder_2 before calling detach.";
     return;
   }
 
-  const std::pair<int, int> body_eq_pairs[] = {
-    { l_tip_body, module2_l_tip_world_eq_ },
-    { r_tip_body, module2_r_tip_world_eq_ },
-  };
-  for (const auto& body_eq_pair : body_eq_pairs)
+  const std::unique_lock<std::recursive_mutex> sim_lock(*sim_mutex_);
+
+  if (active->l_slider_eq >= 0)
   {
-    const int body_id = body_eq_pair.first;
-    const int eq_id = body_eq_pair.second;
-    const Eigen::Matrix3d R_body = mjBodyRotWorld(mj_data_, body_id);
-    const Eigen::Vector3d p_body = mjBodyPosWorld(mj_data_, body_id);
-    const Eigen::Vector3d weld_t = R_body.transpose() * (-p_body);
-    Eigen::Quaterniond qweld(R_body);
-    qweld.normalize();
-    mjtNum* eq_slot = mj_model_->eq_data + eq_id * mjNEQDATA;
-    writeWeldEqData(eq_slot, weld_t, qweld);
+    mj_data_->eq_active[active->l_slider_eq] = 0;
+  }
+  if (active->r_slider_eq >= 0)
+  {
+    mj_data_->eq_active[active->r_slider_eq] = 0;
   }
 
-  mj_data_->eq_active[module2_l_tip_slider_eq_] = 0;
-  mj_data_->eq_active[module2_r_tip_slider_eq_] = 0;
-  mj_data_->eq_active[module2_l_tip_world_eq_] = 1;
-  mj_data_->eq_active[module2_r_tip_world_eq_] = 1;
-
-  const char* free_joint_names[] = { "weld_free_joint_L_Tip", "weld_free_joint_R_Tip" };
-  for (const char* joint_name : free_joint_names)
+  const bool l_snapped = snap_free_body_to_mjcf_home(
+      mj_model_, mj_data_, active->l_body_id, active->l_free_joint.c_str());
+  const bool r_snapped = snap_free_body_to_mjcf_home(
+      mj_model_, mj_data_, active->r_body_id, active->r_free_joint.c_str());
+  if (!l_snapped)
   {
-    const int jnt_free = mj_name2id(mj_model_, mjOBJ_JOINT, joint_name);
-    if (jnt_free >= 0 && mj_model_->jnt_type[jnt_free] == mjJNT_FREE)
-    {
-      const int vadr = mj_model_->jnt_dofadr[jnt_free];
-      for (int k = 0; k < 6; ++k)
-      {
-        mj_data_->qvel[vadr + k] = 0.0;
-      }
-    }
+    snap_free_joint_to_qpos0(mj_model_, mj_data_, active->l_free_joint.c_str());
+  }
+  if (!r_snapped)
+  {
+    snap_free_joint_to_qpos0(mj_model_, mj_data_, active->r_free_joint.c_str());
+  }
+  restore_eq_home(mj_model_, active->l_world_eq, active->l_world_eq_home.data());
+  restore_eq_home(mj_model_, active->r_world_eq, active->r_world_eq_home.data());
+
+  if (active->l_world_eq >= 0)
+  {
+    mj_data_->eq_active[active->l_world_eq] = 1;
+  }
+  if (active->r_world_eq >= 0)
+  {
+    mj_data_->eq_active[active->r_world_eq] = 1;
   }
 
   mj_forward(mj_model_, mj_data_);
 
   response->success = true;
-  response->message = "Module_2 L_Tip and R_Tip detached from fingers and welded to world at current pose.";
+  response->message = "Module_2 tips for '" + tip_object +
+                      "' detached from fingers and welded to world at MJCF home pose "
+                      "(body pos/quat from UR3_RG2.xml).";
+}
+
+namespace
+{
+constexpr const char* kGripperMotorJoint = "gripper_motor_joint";
+constexpr const char* kGripperMotorActuator = "gripper_motor_joint_pos";
+constexpr double kGripperOpenRad = 0.0;
+constexpr double kGripperClosedRad = 1.396;
+constexpr double kGripperForceLimitNm = 10.0;
+
+double clamp_gripper(double v, double lo, double hi)
+{
+  return std::max(lo, std::min(hi, v));
+}
+}  // namespace
+
+void MujocoSystemInterface::register_gripper_hybrid_interfaces()
+{
+  if (!mujoco_node_ || !mj_model_ || !mj_data_)
+  {
+    RCLCPP_WARN(rclcpp::get_logger("MujocoSystemInterface"),
+                "Skipping gripper hybrid interfaces (mujoco_node or mj_model not ready).");
+    return;
+  }
+
+  const int joint_id = mj_name2id(mj_model_, mjOBJ_JOINT, kGripperMotorJoint);
+  gripper_motor_actuator_id_ = mj_name2id(mj_model_, mjOBJ_ACTUATOR, kGripperMotorActuator);
+  if (joint_id < 0 || gripper_motor_actuator_id_ < 0)
+  {
+    RCLCPP_WARN(rclcpp::get_logger("MujocoSystemInterface"),
+                "Gripper hybrid disabled — expected joint '%s' and actuator '%s' in MJCF.",
+                kGripperMotorJoint, kGripperMotorActuator);
+    return;
+  }
+
+  gripper_motor_dof_adr_ = mj_model_->jnt_dofadr[joint_id];
+  gripper_motor_qpos_adr_ = mj_model_->jnt_qposadr[joint_id];
+  gripper_joint_state_index_ = static_cast<size_t>(-1);
+  for (size_t i = 0; i < joint_states_.size(); ++i)
+  {
+    if (joint_states_[i].name == kGripperMotorJoint)
+    {
+      gripper_joint_state_index_ = i;
+      break;
+    }
+  }
+
+  const int aid = gripper_motor_actuator_id_;
+  gripper_hybrid_pos_kp_ = mj_model_->actuator_gainprm[aid * mjNGAIN + 0];
+  gripper_hybrid_pos_kv_ = -mj_model_->actuator_biasprm[aid * mjNBIAS + 2];
+  if (gripper_hybrid_pos_kp_ <= 0.0)
+  {
+    gripper_hybrid_pos_kp_ = 500.0;
+  }
+  if (gripper_hybrid_pos_kv_ <= 0.0)
+  {
+    gripper_hybrid_pos_kv_ = 30.0;
+  }
+
+  mujoco_node_->declare_parameter("gripper_hybrid_close_position_rad", kGripperClosedRad);
+  mujoco_node_->declare_parameter("gripper_hybrid_hold_torque_nm", 2.5);
+  mujoco_node_->declare_parameter("gripper_hybrid_approach_ramp_rad_s", 0.35);
+  mujoco_node_->declare_parameter("gripper_hybrid_min_feedback_torque_nm", 2.0);
+  mujoco_node_->declare_parameter("gripper_hybrid_max_joint_speed_rad_s", 0.15);
+  mujoco_node_->declare_parameter("gripper_hybrid_contact_confirm_steps", 5);
+  mujoco_node_->declare_parameter("gripper_hybrid_hold_sec", 2.0);
+  mujoco_node_->declare_parameter("gripper_hybrid_timeout_sec", 45.0);
+  mujoco_node_->declare_parameter("gripper_hybrid_position_kp", gripper_hybrid_pos_kp_);
+  mujoco_node_->declare_parameter("gripper_hybrid_position_kv", gripper_hybrid_pos_kv_);
+
+  gripper_hybrid_close_srv_ = mujoco_node_->create_service<std_srvs::srv::Trigger>(
+      "/mujoco/gripper/hybrid_close",
+      std::bind(&MujocoSystemInterface::gripper_hybrid_close_srv, this, std::placeholders::_1, std::placeholders::_2));
+  gripper_hybrid_open_srv_ = mujoco_node_->create_service<std_srvs::srv::Trigger>(
+      "/mujoco/gripper/hybrid_open",
+      std::bind(&MujocoSystemInterface::gripper_hybrid_open_srv, this, std::placeholders::_1, std::placeholders::_2));
+
+  gripper_hybrid_registered_ = true;
+  RCLCPP_INFO(rclcpp::get_logger("MujocoSystemInterface"),
+              "Gripper hybrid: services /mujoco/gripper/hybrid_close and /mujoco/gripper/hybrid_open "
+              "(actuator '%s', joint '%s').",
+              kGripperMotorActuator, kGripperMotorJoint);
+}
+
+void MujocoSystemInterface::set_gripper_position_actuator_mode()
+{
+  if (!mj_model_ || gripper_motor_actuator_id_ < 0)
+  {
+    return;
+  }
+  const int aid = gripper_motor_actuator_id_;
+  const double kp = mujoco_node_->get_parameter("gripper_hybrid_position_kp").as_double();
+  const double kv = mujoco_node_->get_parameter("gripper_hybrid_position_kv").as_double();
+  mj_model_->actuator_gaintype[aid] = mjGAIN_FIXED;
+  mj_model_->actuator_biastype[aid] = mjBIAS_AFFINE;
+  for (int i = 0; i < mjNGAIN; ++i)
+  {
+    mj_model_->actuator_gainprm[aid * mjNGAIN + i] = 0.0;
+  }
+  for (int i = 0; i < mjNBIAS; ++i)
+  {
+    mj_model_->actuator_biasprm[aid * mjNBIAS + i] = 0.0;
+  }
+  mj_model_->actuator_gainprm[aid * mjNGAIN + 0] = kp;
+  mj_model_->actuator_biasprm[aid * mjNBIAS + 1] = -kp;
+  mj_model_->actuator_biasprm[aid * mjNBIAS + 2] = -kv;
+}
+
+void MujocoSystemInterface::set_gripper_direct_torque_actuator_mode()
+{
+  if (!mj_model_ || gripper_motor_actuator_id_ < 0)
+  {
+    return;
+  }
+  const int aid = gripper_motor_actuator_id_;
+  mj_model_->actuator_gaintype[aid] = mjGAIN_FIXED;
+  mj_model_->actuator_biastype[aid] = mjBIAS_NONE;
+  for (int i = 0; i < mjNGAIN; ++i)
+  {
+    mj_model_->actuator_gainprm[aid * mjNGAIN + i] = 0.0;
+  }
+  for (int i = 0; i < mjNBIAS; ++i)
+  {
+    mj_model_->actuator_biasprm[aid * mjNBIAS + i] = 0.0;
+  }
+  mj_model_->actuator_gainprm[aid * mjNGAIN + 0] = 1.0;
+}
+
+bool MujocoSystemInterface::gripper_hybrid_contact_detected()
+{
+  if (!mj_data_ || gripper_motor_actuator_id_ < 0 || !mujoco_node_)
+  {
+    return false;
+  }
+
+  const double min_torque = mujoco_node_->get_parameter("gripper_hybrid_min_feedback_torque_nm").as_double();
+  const double max_speed = mujoco_node_->get_parameter("gripper_hybrid_max_joint_speed_rad_s").as_double();
+  const int confirm_steps = mujoco_node_->get_parameter("gripper_hybrid_contact_confirm_steps").as_int();
+
+  const double tau = mj_data_->actuator_force[gripper_motor_actuator_id_];
+  const double qd = std::abs(mj_data_->qvel[gripper_motor_dof_adr_]);
+  const double q = mj_data_->qpos[gripper_motor_qpos_adr_];
+  const bool closing = gripper_hybrid_approach_setpoint_ > q + 1e-4;
+  const bool torque_spike = closing ? (tau >= min_torque) : (std::abs(tau) >= min_torque);
+  const bool low_speed = qd <= max_speed;
+
+  bool stalled = false;
+  if (gripper_hybrid_stall_history_.size() >= 10)
+  {
+    const double pos_error = gripper_hybrid_approach_setpoint_ - q;
+    const double delta_q =
+        *std::max_element(gripper_hybrid_stall_history_.begin(), gripper_hybrid_stall_history_.end()) -
+        *std::min_element(gripper_hybrid_stall_history_.begin(), gripper_hybrid_stall_history_.end());
+    stalled = pos_error >= 0.02 && delta_q <= 0.002;
+  }
+
+  if (torque_spike && (low_speed || stalled))
+  {
+    ++gripper_hybrid_contact_counter_;
+  }
+  else
+  {
+    gripper_hybrid_contact_counter_ = 0;
+  }
+  return gripper_hybrid_contact_counter_ >= confirm_steps;
+}
+
+void MujocoSystemInterface::step_gripper_hybrid(double dt)
+{
+  if (!mj_model_ || !mj_data_ || gripper_motor_actuator_id_ < 0 || !mujoco_node_)
+  {
+    return;
+  }
+
+  std::lock_guard<std::mutex> lock(gripper_hybrid_mu_);
+  if (gripper_hybrid_state_ == GripperHybridState::Idle || gripper_hybrid_state_ == GripperHybridState::Done ||
+      gripper_hybrid_state_ == GripperHybridState::Failed)
+  {
+    return;
+  }
+
+  const double timeout_sec = mujoco_node_->get_parameter("gripper_hybrid_timeout_sec").as_double();
+  gripper_hybrid_run_elapsed_ += std::max(0.0, dt);
+  if (gripper_hybrid_run_elapsed_ > timeout_sec)
+  {
+    gripper_hybrid_state_ = GripperHybridState::Failed;
+    set_gripper_position_actuator_mode();
+    gripper_hybrid_cv_.notify_all();
+    return;
+  }
+
+  const int aid = gripper_motor_actuator_id_;
+  const double close_rad = clamp_gripper(
+      mujoco_node_->get_parameter("gripper_hybrid_close_position_rad").as_double(), kGripperOpenRad, kGripperClosedRad);
+  const double hold_torque =
+      clamp_gripper(mujoco_node_->get_parameter("gripper_hybrid_hold_torque_nm").as_double(), -kGripperForceLimitNm,
+                    kGripperForceLimitNm);
+  const double ramp = std::max(0.0, mujoco_node_->get_parameter("gripper_hybrid_approach_ramp_rad_s").as_double());
+  const double hold_sec = std::max(0.0, mujoco_node_->get_parameter("gripper_hybrid_hold_sec").as_double());
+
+  gripper_hybrid_stall_history_.push_back(mj_data_->qpos[gripper_motor_qpos_adr_]);
+  while (gripper_hybrid_stall_history_.size() > 10)
+  {
+    gripper_hybrid_stall_history_.pop_front();
+  }
+
+  if (gripper_hybrid_state_ == GripperHybridState::PositionApproach)
+  {
+    set_gripper_position_actuator_mode();
+    gripper_hybrid_approach_setpoint_ =
+        std::min(gripper_hybrid_approach_setpoint_ + ramp * dt, close_rad);
+    mj_data_->ctrl[aid] = gripper_hybrid_approach_setpoint_;
+    if (gripper_joint_state_index_ < joint_states_.size())
+    {
+      joint_states_[gripper_joint_state_index_].position_command = gripper_hybrid_approach_setpoint_;
+    }
+    if (gripper_hybrid_contact_detected())
+    {
+      gripper_hybrid_state_ = GripperHybridState::SwitchToTorque;
+      gripper_hybrid_hold_elapsed_ = 0.0;
+    }
+  }
+  else if (gripper_hybrid_state_ == GripperHybridState::SwitchToTorque)
+  {
+    set_gripper_direct_torque_actuator_mode();
+    mj_data_->ctrl[aid] = hold_torque;
+    gripper_hybrid_state_ = GripperHybridState::TorqueHold;
+    gripper_hybrid_hold_elapsed_ = 0.0;
+  }
+  else if (gripper_hybrid_state_ == GripperHybridState::TorqueHold)
+  {
+    mj_data_->ctrl[aid] = hold_torque;
+    gripper_hybrid_hold_elapsed_ += std::max(0.0, dt);
+    if (gripper_hybrid_hold_elapsed_ >= hold_sec)
+    {
+      set_gripper_position_actuator_mode();
+      const double q = mj_data_->qpos[gripper_motor_qpos_adr_];
+      mj_data_->ctrl[aid] = q;
+      if (gripper_joint_state_index_ < joint_states_.size())
+      {
+        joint_states_[gripper_joint_state_index_].position_command = q;
+      }
+      gripper_hybrid_state_ = GripperHybridState::Done;
+      gripper_hybrid_cv_.notify_all();
+    }
+  }
+}
+
+void MujocoSystemInterface::gripper_hybrid_close_srv(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> /*request*/,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+{
+  if (!gripper_hybrid_registered_ || !mj_model_ || !mj_data_ || sim_mutex_ == nullptr)
+  {
+    response->success = false;
+    response->message = "Gripper hybrid interface is not ready.";
+    return;
+  }
+
+  {
+    const std::unique_lock<std::recursive_mutex> sim_lock(*sim_mutex_);
+    std::lock_guard<std::mutex> lock(gripper_hybrid_mu_);
+    if (gripper_hybrid_state_ == GripperHybridState::PositionApproach ||
+        gripper_hybrid_state_ == GripperHybridState::SwitchToTorque ||
+        gripper_hybrid_state_ == GripperHybridState::TorqueHold)
+    {
+      response->success = false;
+      response->message = "Gripper hybrid close already running.";
+      return;
+    }
+
+    gripper_hybrid_contact_counter_ = 0;
+    gripper_hybrid_stall_history_.clear();
+    gripper_hybrid_hold_elapsed_ = 0.0;
+    gripper_hybrid_run_elapsed_ = 0.0;
+    gripper_hybrid_approach_setpoint_ = mj_data_->qpos[gripper_motor_qpos_adr_];
+    set_gripper_position_actuator_mode();
+    mj_data_->ctrl[gripper_motor_actuator_id_] = gripper_hybrid_approach_setpoint_;
+    gripper_hybrid_state_ = GripperHybridState::PositionApproach;
+  }
+
+  const double timeout_sec = mujoco_node_->get_parameter("gripper_hybrid_timeout_sec").as_double() + 5.0;
+  std::unique_lock<std::mutex> wait_lock(gripper_hybrid_mu_);
+  const bool finished = gripper_hybrid_cv_.wait_for(
+      wait_lock, std::chrono::duration<double>(timeout_sec), [this]() {
+        return gripper_hybrid_state_ == GripperHybridState::Done ||
+               gripper_hybrid_state_ == GripperHybridState::Failed;
+      });
+
+  if (!finished || gripper_hybrid_state_ == GripperHybridState::Failed)
+  {
+    response->success = false;
+    response->message = finished ? "Gripper hybrid close failed (no contact or timeout)." :
+                                   "Gripper hybrid close timed out waiting for completion.";
+    if (gripper_hybrid_state_ != GripperHybridState::Idle)
+    {
+      gripper_hybrid_state_ = GripperHybridState::Failed;
+    }
+    return;
+  }
+
+  response->success = true;
+  response->message = "Gripper hybrid close complete (position approach → torque hold). q=" +
+                      std::to_string(mj_data_->qpos[gripper_motor_qpos_adr_]) + " rad.";
+}
+
+void MujocoSystemInterface::gripper_hybrid_open_srv(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> /*request*/,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+{
+  if (!gripper_hybrid_registered_ || !mj_model_ || !mj_data_ || sim_mutex_ == nullptr)
+  {
+    response->success = false;
+    response->message = "Gripper hybrid interface is not ready.";
+    return;
+  }
+
+  const std::unique_lock<std::recursive_mutex> sim_lock(*sim_mutex_);
+  {
+    std::lock_guard<std::mutex> lock(gripper_hybrid_mu_);
+    gripper_hybrid_state_ = GripperHybridState::Idle;
+    gripper_hybrid_contact_counter_ = 0;
+    gripper_hybrid_stall_history_.clear();
+  }
+
+  set_gripper_position_actuator_mode();
+  mj_data_->ctrl[gripper_motor_actuator_id_] = kGripperOpenRad;
+  if (gripper_joint_state_index_ < joint_states_.size())
+  {
+    joint_states_[gripper_joint_state_index_].position_command = kGripperOpenRad;
+  }
+  mj_forward(mj_model_, mj_data_);
+
+  response->success = true;
+  response->message = "Gripper opened to 0 rad (position mode).";
 }
 
 void MujocoSystemInterface::get_model(mjModel*& dest)

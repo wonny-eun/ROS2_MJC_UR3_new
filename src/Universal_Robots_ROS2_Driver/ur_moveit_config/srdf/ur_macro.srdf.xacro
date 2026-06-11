@@ -78,6 +78,7 @@
     <disable_collisions link1="${prefix}wrist_2_link" link2="d435i_mount_link" reason="Never" />
     <disable_collisions link1="${prefix}wrist_1_link" link2="d435i_mount_link" reason="Never" />
     <disable_collisions link1="${prefix}wrist_3_link" link2="rl_camera_frame" reason="Never" />
+    <disable_collisions link1="rl_camera_jack" link2="rl_camera_frame" reason="Never" />
 
     <disable_collisions link1="table" link2="world" reason="Adjacent" />
 

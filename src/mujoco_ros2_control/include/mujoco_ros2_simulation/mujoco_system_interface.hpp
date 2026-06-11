@@ -19,6 +19,9 @@
 
 #pragma once
 
+#include <array>
+#include <condition_variable>
+#include <deque>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -206,6 +209,26 @@ private:
       const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
       std::shared_ptr<std_srvs::srv::Trigger::Response> response);
 
+  void register_gripper_hybrid_interfaces();
+  void gripper_hybrid_close_srv(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+                                std::shared_ptr<std_srvs::srv::Trigger::Response> response);
+  void gripper_hybrid_open_srv(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+                               std::shared_ptr<std_srvs::srv::Trigger::Response> response);
+  void step_gripper_hybrid(double dt);
+  void set_gripper_position_actuator_mode();
+  void set_gripper_direct_torque_actuator_mode();
+  bool gripper_hybrid_contact_detected();
+
+  enum class GripperHybridState
+  {
+    Idle,
+    PositionApproach,
+    SwitchToTorque,
+    TorqueHold,
+    Done,
+    Failed
+  };
+
   // System information
   hardware_interface::HardwareInfo system_info_;
   std::string model_path_;
@@ -262,13 +285,51 @@ private:
   bool module_plate_weld_registered_{ false };
   int module_plate_weld_world_eq_{ -1 };
   int module_plate_weld_case_eq_{ -1 };
+  int module_plate_body_id_{ -1 };
+  std::array<mjtNum, mjNEQDATA> module_plate_world_eq_home_{};
+  struct Module2TipWeldSet
+  {
+    int l_world_eq{ -1 };
+    int r_world_eq{ -1 };
+    int l_slider_eq{ -1 };
+    int r_slider_eq{ -1 };
+    int l_body_id{ -1 };
+    int r_body_id{ -1 };
+    std::string l_free_joint;
+    std::string r_free_joint;
+    std::array<mjtNum, mjNEQDATA> l_world_eq_home{};
+    std::array<mjtNum, mjNEQDATA> r_world_eq_home{};
+  };
+
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr module2_tips_attach_fingers_srv_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr module2_tips_detach_world_srv_;
   bool module2_tips_weld_registered_{ false };
-  int module2_l_tip_world_eq_{ -1 };
-  int module2_r_tip_world_eq_{ -1 };
-  int module2_l_tip_slider_eq_{ -1 };
-  int module2_r_tip_slider_eq_{ -1 };
+  std::unordered_map<std::string, Module2TipWeldSet> module2_tip_weld_sets_;
+  const Module2TipWeldSet* active_module2_tip_weld_set(const std::string& suffix) const;
+
+  // Hybrid position → torque gripper (gripper_motor_joint_pos in UR3_RG2.xml)
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr gripper_hybrid_close_srv_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr gripper_hybrid_open_srv_;
+  bool gripper_hybrid_registered_{ false };
+  int gripper_motor_actuator_id_{ -1 };
+  int gripper_motor_dof_adr_{ -1 };
+  int gripper_motor_qpos_adr_{ -1 };
+  size_t gripper_joint_state_index_{ static_cast<size_t>(-1) };
+  GripperHybridState gripper_hybrid_state_{ GripperHybridState::Idle };
+  mutable std::mutex gripper_hybrid_mu_;
+  std::condition_variable gripper_hybrid_cv_;
+  double gripper_hybrid_approach_setpoint_{ 0.0 };
+  int gripper_hybrid_contact_counter_{ 0 };
+  mutable std::deque<double> gripper_hybrid_stall_history_;
+  double gripper_hybrid_hold_elapsed_{ 0.0 };
+  double gripper_hybrid_run_elapsed_{ 0.0 };
+  double gripper_hybrid_pos_kp_{ 500.0 };
+  double gripper_hybrid_pos_kv_{ 30.0 };
+  bool gripper_hybrid_actuator_saved_{ false };
+  int gripper_hybrid_saved_gaintype_{ 0 };
+  int gripper_hybrid_saved_biastype_{ 0 };
+  std::array<double, mjNGAIN> gripper_hybrid_saved_gainprm_{};
+  std::array<double, mjNBIAS> gripper_hybrid_saved_biasprm_{};
 
   // Mutex used inside simulate.h for protecting model/data, we keep a reference
   // here to protect access to shared data.

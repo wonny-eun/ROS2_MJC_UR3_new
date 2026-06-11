@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from array import array
+
 import numpy as np
 import rclpy
 from rclpy.node import Node
@@ -40,7 +42,9 @@ class FoundationPoseDepthMono16Node(Node):
         out.encoding = "mono16"
         out.is_bigendian = 0
         out.step = msg.width * 2
-        out.data = depth_mm.tobytes()
+        # sensor_msgs/Image.data is uint8[] — use array('B', …), not raw bytes (rclpy setter
+        # validation raises TypeError on bytes in some Humble builds).
+        out.data = array("B", depth_mm.tobytes())
         self._pub.publish(out)
 
 

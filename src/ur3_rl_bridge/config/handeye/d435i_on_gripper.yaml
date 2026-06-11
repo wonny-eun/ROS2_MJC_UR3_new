@@ -1,7 +1,12 @@
-# Eye-in-hand calibration for tool0 -> camera_color_optical_frame.
-# Default launch keeps enable_handeye_tf:=false; URDF publishes tool0 -> ... -> rl_camera_frame -> camera_color_optical_frame.
-# Do not enable hand-eye TF and URDF camera links at the same time (duplicate TF).
-# If enable_handeye_tf:=true, set rotation_xyzw to match your calibrated optical orientation (URDF default: pitch -π from rl_camera_frame).
+# Eye-in-hand calibration: tool0 -> camera_color_optical_frame (real D435i on gripper).
+#
+# Real robot stack (launch_handeye_d435i_gripper.sh):
+#   - URDF: gripper -> d435i_mount_link -> rl_camera_frame (MoveIt collision mesh only)
+#   - This file: static TF tool0 -> camera_color_optical_frame (vision / YOLO / depth)
+#   - RealSense: publish_tf:=false
+# Do NOT also publish camera_color_optical_frame from URDF (use_handeye_camera_tf:=true in xacro).
+#
+# Tune translation/rotation after calibration. URDF-only optical used rpy (0,0,-π) from rl_camera_frame.
 parent_frame: tool0
 child_frame: camera_color_optical_frame
 

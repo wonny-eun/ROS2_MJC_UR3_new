@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
-"""Bridge MuJoCo rl_camera + YOLO to Isaac FoundationPose (Detection2DArray) and RViz (PointCloud2).
+"""Bridge MuJoCo rl_camera + YOLO to Isaac FoundationPose and RViz.
 
-Publishes:
-  - ``detection_topic`` — ``vision_msgs/Detection2DArray`` for Isaac ``Detection2DToMask`` (highest score box).
-  - ``object_cloud_topic`` — cropped depth → ``sensor_msgs/PointCloud2`` in the camera frame (default ``camera_color_optical_frame``).
+Publishes on trigger (``~/trigger``):
+  - ``detection_topic`` — ``vision_msgs/Detection2DArray`` (debug / legacy).
+  - ``segmentation_topic`` — ``sensor_msgs/Image`` mono8 mask for FoundationPose (640×480).
+  - ``object_cloud_topic`` — cropped depth → ``sensor_msgs/PointCloud2`` in the camera frame.
 
-Service ``~/trigger`` (``std_srvs/Trigger``): latch one detection + point cloud from the latest camera frames.
-
-Isaac ROS and TensorRT engines are **not** started here — run the NVIDIA pose_estimation stack separately and remap its
-subscriptions to ``/rl_camera/*`` plus this node's ``detection_topic``.
+When ``use_yolo_segmentation_mask`` is true (default), YOLO-seg instance masks are published
+directly to ``/segmentation`` and Isaac ``Detection2DToMask`` should be disabled in launch.
 """
 
 from __future__ import annotations
@@ -18,6 +17,7 @@ import math
 import os
 import struct
 import threading
+from dataclasses import dataclass
 from typing import Any, Optional, Sequence, Tuple
 
 import cv2
@@ -44,6 +44,18 @@ except ImportError:  # pragma: no cover
 BBox_xyxy_cf = Tuple[float, float, float, float, str, float]
 
 
+@dataclass(frozen=True)
+class _YoloPick:
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    label: str
+    score: float
+    det_index: int
+    mask_full: Optional[np.ndarray]  # uint8 H×W, 255=object, same size as RGB
+
+
 def _image_rgb_and_header(msg: Image) -> Tuple[np.ndarray, Any, str]:
     if msg.encoding == "rgb8":
         rgb = np.frombuffer(msg.data, dtype=np.uint8).reshape((msg.height, msg.width, 3))
@@ -55,7 +67,46 @@ def _image_rgb_and_header(msg: Image) -> Tuple[np.ndarray, Any, str]:
     raise ValueError(f"Unsupported RGB encoding '{msg.encoding}'")
 
 
-def _yolo_pick_bbox_xyxy(
+def _depth_image_to_meters(msg: Image) -> np.ndarray:
+    """Decode depth Image to float32 meters (32FC1 or RealSense 16UC1 mm)."""
+    if msg.encoding == "32FC1":
+        return np.frombuffer(msg.data, dtype=np.float32).reshape((msg.height, msg.width))
+    if msg.encoding in ("16UC1", "mono16"):
+        raw = np.frombuffer(msg.data, dtype=np.uint16).reshape((msg.height, msg.width))
+        return raw.astype(np.float32) * 0.001
+    raise ValueError(f"Unsupported depth encoding '{msg.encoding}' (expected 32FC1 or 16UC1)")
+
+
+def _bbox_iou(a: Sequence[float], b: Sequence[float]) -> float:
+    ax1, ay1, ax2, ay2 = (float(a[0]), float(a[1]), float(a[2]), float(a[3]))
+    bx1, by1, bx2, by2 = (float(b[0]), float(b[1]), float(b[2]), float(b[3]))
+    ix1 = max(ax1, bx1)
+    iy1 = max(ay1, by1)
+    ix2 = min(ax2, bx2)
+    iy2 = min(ay2, by2)
+    iw = max(0.0, ix2 - ix1)
+    ih = max(0.0, iy2 - iy1)
+    inter = iw * ih
+    if inter <= 0.0:
+        return 0.0
+    area_a = max(0.0, ax2 - ax1) * max(0.0, ay2 - ay1)
+    area_b = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
+    union = area_a + area_b - inter
+    return float(inter / union) if union > 1e-12 else 0.0
+
+
+def _class_name_matches(
+    cname: str,
+    target_class: str,
+    *,
+    case_insensitive: bool,
+) -> bool:
+    if case_insensitive:
+        return cname.strip().lower() == target_class.strip().lower()
+    return cname.strip() == target_class.strip()
+
+
+def _yolo_pick_detection(
     model: Any,
     rgb: np.ndarray,
     *,
@@ -65,11 +116,22 @@ def _yolo_pick_bbox_xyxy(
     predict_conf_floor: float,
     exclusive_scene_classes: Optional[Sequence[str]],
     class_match_case_insensitive: bool,
-) -> Optional[BBox_xyxy_cf]:
+    want_mask: bool,
+    latch_xyxy: Optional[Sequence[float]] = None,
+) -> Optional[_YoloPick]:
     infer_conf = float(min(max(1e-6, predict_conf_floor), min_conf))
-    results = model.predict(rgb, conf=infer_conf, iou=yolo_iou, verbose=False)[0]
+    results = model.predict(
+        rgb,
+        conf=infer_conf,
+        iou=yolo_iou,
+        retina_masks=want_mask,
+        verbose=False,
+    )[0]
     names = results.names
     boxes = results.boxes
+    if boxes is None or boxes.cls is None or len(boxes) == 0:
+        return None
+
     target_cmp = target_class.strip()
     if class_match_case_insensitive:
         target_cmp = target_cmp.lower()
@@ -84,51 +146,116 @@ def _yolo_pick_bbox_xyxy(
     else:
         exclusive_norm = set(exclusive_list) if exclusive_list else set()
 
-    best_conf = -1.0
-    best_xyxy: Optional[np.ndarray] = None
-    best_label = ""
+    candidates: list[tuple[float, int, str]] = []
+    for i in range(len(boxes)):
+        cid = int(boxes.cls[i].item())
+        cf = float(boxes.conf[i].item())
+        cname = str(names[cid]).strip()
+        key = cname.lower() if class_match_case_insensitive else cname
+        if exclusive_norm and key not in exclusive_norm:
+            continue
+        if not _class_name_matches(cname, target_class, case_insensitive=class_match_case_insensitive):
+            continue
+        if cf < min_conf:
+            continue
+        candidates.append((cf, i, cname))
 
-    if exclusive_norm and boxes is not None and boxes.cls is not None and len(boxes) > 0:
-        candidates: list[tuple[float, int, str]] = []
-        for i in range(len(boxes)):
-            cid = int(boxes.cls[i].item())
-            cf = float(boxes.conf[i].item())
-            cname = str(names[cid]).strip()
-            key = cname.lower() if class_match_case_insensitive else cname
-            if key in exclusive_norm:
-                candidates.append((cf, i, cname))
-        if candidates:
-            target_matches = [
-                (cf, i, cname)
-                for cf, i, cname in candidates
-                if (cname.lower() if class_match_case_insensitive else cname) == target_cmp
-            ]
-            if target_matches:
-                cf_w, i_w, cname_w = max(target_matches, key=lambda x: x[0])
-                if cf_w >= min_conf:
-                    best_conf = cf_w
-                    best_xyxy = boxes.xyxy[i_w].cpu().numpy()
-                    best_label = cname_w
-
-    if best_xyxy is None and boxes is not None and boxes.cls is not None:
-        for i in range(len(boxes)):
-            cid = int(boxes.cls[i].item())
-            cf = float(boxes.conf[i].item())
-            cname = str(names[cid]).strip()
-            if class_match_case_insensitive:
-                if cname.lower() != target_cmp:
-                    continue
-            elif cname != target_class.strip():
-                continue
-            if cf > best_conf:
-                best_conf = cf
-                best_xyxy = boxes.xyxy[i].cpu().numpy()
-                best_label = cname
-
-    if best_xyxy is None or best_conf < min_conf:
+    if not candidates:
         return None
-    x1, y1, x2, y2 = [float(v) for v in best_xyxy]
-    return (x1, y1, x2, y2, best_label, float(best_conf))
+
+    if latch_xyxy is not None and len(latch_xyxy) >= 4:
+        latch = [float(latch_xyxy[0]), float(latch_xyxy[1]), float(latch_xyxy[2]), float(latch_xyxy[3])]
+        best_iou = -1.0
+        best: Optional[tuple[float, int, str]] = None
+        for cf, i, cname in candidates:
+            xyxy = boxes.xyxy[i].cpu().numpy()
+            iou = _bbox_iou(latch, [float(xyxy[0]), float(xyxy[1]), float(xyxy[2]), float(xyxy[3])])
+            if iou > best_iou:
+                best_iou = iou
+                best = (cf, i, cname)
+        if best is None or best_iou < 0.05:
+            return None
+        cf_w, i_w, cname_w = best
+    else:
+        cf_w, i_w, cname_w = max(candidates, key=lambda x: x[0])
+
+    xyxy = boxes.xyxy[i_w].cpu().numpy()
+    x1, y1, x2, y2 = (float(xyxy[0]), float(xyxy[1]), float(xyxy[2]), float(xyxy[3]))
+
+    mask_full: Optional[np.ndarray] = None
+    if want_mask and results.masks is not None and len(results.masks) > i_w:
+        mh, mw = rgb.shape[:2]
+        mask_full = np.zeros((mh, mw), dtype=np.uint8)
+        mdata = results.masks.data[i_w].cpu().numpy()
+        if mdata.shape[0] != mh or mdata.shape[1] != mw:
+            mdata = cv2.resize(mdata.astype(np.float32), (mw, mh), interpolation=cv2.INTER_LINEAR)
+        mask_full[mdata > 0.5] = 255
+
+    return _YoloPick(
+        x1=x1,
+        y1=y1,
+        x2=x2,
+        y2=y2,
+        label=cname_w,
+        score=float(cf_w),
+        det_index=int(i_w),
+        mask_full=mask_full,
+    )
+
+
+def _yolo_pick_bbox_xyxy(
+    model: Any,
+    rgb: np.ndarray,
+    *,
+    target_class: str,
+    min_conf: float,
+    yolo_iou: float,
+    predict_conf_floor: float,
+    exclusive_scene_classes: Optional[Sequence[str]],
+    class_match_case_insensitive: bool,
+) -> Optional[BBox_xyxy_cf]:
+    pick = _yolo_pick_detection(
+        model,
+        rgb,
+        target_class=target_class,
+        min_conf=min_conf,
+        yolo_iou=yolo_iou,
+        predict_conf_floor=predict_conf_floor,
+        exclusive_scene_classes=exclusive_scene_classes,
+        class_match_case_insensitive=class_match_case_insensitive,
+        want_mask=False,
+    )
+    if pick is None:
+        return None
+    return (pick.x1, pick.y1, pick.x2, pick.y2, pick.label, pick.score)
+
+
+def _bbox_binary_mask(h: int, w: int, x1: int, y1: int, x2: int, y2: int) -> np.ndarray:
+    mask = np.zeros((h, w), dtype=np.uint8)
+    x1c, y1c = max(0, x1), max(0, y1)
+    x2c, y2c = min(w - 1, x2), min(h - 1, y2)
+    if x2c > x1c and y2c > y1c:
+        mask[y1c : y2c + 1, x1c : x2c + 1] = 255
+    return mask
+
+
+def _resize_mask_nearest(mask: np.ndarray, width: int, height: int) -> np.ndarray:
+    if mask.shape[1] == width and mask.shape[0] == height:
+        return mask
+    return cv2.resize(mask, (width, height), interpolation=cv2.INTER_NEAREST)
+
+
+def _mask_to_image_msg(mask_u8: np.ndarray, stamp: Any, frame_id: str) -> Image:
+    msg = Image()
+    msg.header.stamp = stamp
+    msg.header.frame_id = frame_id
+    msg.height = int(mask_u8.shape[0])
+    msg.width = int(mask_u8.shape[1])
+    msg.encoding = "mono8"
+    msg.is_bigendian = False
+    msg.step = int(mask_u8.shape[1])
+    msg.data = np.ascontiguousarray(mask_u8).tobytes()
+    return msg
 
 
 def _bbox_to_pointcloud(
@@ -219,6 +346,78 @@ def _bbox_to_pointcloud(
     return cloud
 
 
+def _mask_to_pointcloud(
+    depth_m: np.ndarray,
+    info: CameraInfo,
+    mask_u8: np.ndarray,
+    *,
+    stride_px: int,
+    z_min: float,
+    z_max: float,
+    stamp: Any,
+    frame_id: str,
+    rgb_uint8: Optional[np.ndarray] = None,
+) -> PointCloud2:
+    """Back-project depth where ``mask_u8`` is non-zero."""
+    h, w = depth_m.shape[:2]
+    if mask_u8.shape[0] != h or mask_u8.shape[1] != w:
+        mask_u8 = cv2.resize(mask_u8, (w, h), interpolation=cv2.INTER_NEAREST)
+
+    fx = float(info.k[0])
+    fy = float(info.k[4])
+    cx = float(info.k[2])
+    cy = float(info.k[5])
+    st = max(1, int(stride_px))
+
+    pts: list[Tuple[float, float, float]] = []
+    for v in range(0, h, st):
+        row = depth_m[v]
+        mrow = mask_u8[v]
+        for u in range(0, w, st):
+            if mrow[u] == 0:
+                continue
+            zm = float(row[u])
+            if not math.isfinite(zm) or zm <= z_min or zm >= z_max:
+                continue
+            x = (float(u) - cx) * zm / fx
+            y = (float(v) - cy) * zm / fy
+            pts.append((x, y, zm))
+
+    cloud = PointCloud2()
+    cloud.header.stamp = stamp
+    cloud.header.frame_id = frame_id
+    cloud.height = 1
+    cloud.width = int(len(pts))
+    cloud.is_bigendian = False
+    cloud.is_dense = True
+    cloud.fields = [
+        PointField(name="x", offset=0, datatype=PointField.FLOAT32, count=1),
+        PointField(name="y", offset=4, datatype=PointField.FLOAT32, count=1),
+        PointField(name="z", offset=8, datatype=PointField.FLOAT32, count=1),
+    ]
+    if rgb_uint8 is not None:
+        cloud.fields.append(PointField(name="rgb", offset=12, datatype=PointField.UINT32, count=1))
+        cloud.point_step = 16
+    else:
+        cloud.point_step = 12
+
+    cloud.row_step = cloud.point_step * cloud.width
+    buff = bytearray(cloud.row_step)
+    rgba_u32_fn = rgb_uint8 is not None
+    for i, (xx, yy, zz) in enumerate(pts):
+        off = i * cloud.point_step
+        if rgba_u32_fn:
+            uc = max(0, min(w - 1, int(round((xx * fx / zz) + cx))))
+            vc = max(0, min(h - 1, int(round((yy * fy / zz) + cy))))
+            r, g, b = rgb_uint8[vc, uc].tolist()
+            rgb_packed = (int(r) << 16) | (int(g) << 8) | int(b)
+            struct.pack_into("<fffI", buff, off, float(xx), float(yy), float(zz), rgb_packed)
+        else:
+            struct.pack_into("<fff", buff, off, float(xx), float(yy), float(zz))
+    cloud.data = bytes(buff)
+    return cloud
+
+
 def _detection_msg(
     *,
     stamp: Any,
@@ -273,6 +472,10 @@ class FoundationPoseBridgeNode(Node):
         self.declare_parameter("use_latched_bbox_on_trigger", False)
         self.declare_parameter("latched_bbox_xyxy", [0.0, 0.0, 0.0, 0.0])
         self.declare_parameter("latched_bbox_label", "")
+        self.declare_parameter("use_yolo_segmentation_mask", True)
+        self.declare_parameter("segmentation_topic", "/segmentation")
+        self.declare_parameter("segmentation_mask_width", 640)
+        self.declare_parameter("segmentation_mask_height", 480)
         # Re-publish detections with fresh image stamps so Isaac GXF sync matches rgb/depth/camera_info.
         self.declare_parameter("keepalive_republish_hz", 10.0)
 
@@ -286,8 +489,12 @@ class FoundationPoseBridgeNode(Node):
         if YOLO is None:
             raise RuntimeError("Install ultralytics: pip install ultralytics")
         self._model = YOLO(expanded)
+        self._use_seg_mask = bool(self.get_parameter("use_yolo_segmentation_mask").value)
+        self._seg_w = max(1, int(self.get_parameter("segmentation_mask_width").value))
+        self._seg_h = max(1, int(self.get_parameter("segmentation_mask_height").value))
 
         self._det_topic = str(self.get_parameter("detection_topic").value)
+        self._seg_topic = str(self.get_parameter("segmentation_topic").value)
         self._cloud_topic = str(self.get_parameter("object_cloud_topic").value)
         qos_latched = QoSProfile(
             depth=1,
@@ -295,12 +502,16 @@ class FoundationPoseBridgeNode(Node):
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
         )
         self._pub_det = self.create_publisher(Detection2DArray, self._det_topic, qos_latched)
+        self._pub_seg = (
+            self.create_publisher(Image, self._seg_topic, qos_latched) if self._use_seg_mask else None
+        )
         self._pub_cloud = self.create_publisher(PointCloud2, self._cloud_topic, qos_latched)
 
         self._rgb_msg: Optional[Image] = None
         self._depth_msg: Optional[Image] = None
         self._info: Optional[CameraInfo] = None
         self._last_det: Optional[Detection2DArray] = None
+        self._last_seg: Optional[Image] = None
         self._lock = threading.Lock()
 
         keepalive_hz = float(self.get_parameter("keepalive_republish_hz").value)
@@ -312,9 +523,14 @@ class FoundationPoseBridgeNode(Node):
         self.create_subscription(CameraInfo, str(self.get_parameter("camera_info_topic").value), self._on_info, 1)
 
         self.create_service(Trigger, "~/trigger", self._on_trigger)
+        seg_txt = (
+            f"seg_mask '{self._seg_topic}' ({self._seg_w}x{self._seg_h})"
+            if self._use_seg_mask
+            else "bbox→Detection2DToMask (legacy)"
+        )
         self.get_logger().info(
-            f"FoundationPose bridge: detections '{self._det_topic}', cloud '{self._cloud_topic}', "
-            f"trigger '~/trigger'"
+            f"FoundationPose bridge: detections '{self._det_topic}', {seg_txt}, "
+            f"cloud '{self._cloud_topic}', trigger '~/trigger'"
         )
 
     def _on_rgb(self, msg: Image) -> None:
@@ -332,19 +548,34 @@ class FoundationPoseBridgeNode(Node):
     def _on_keepalive(self) -> None:
         with self._lock:
             det = self._last_det
+            seg = self._last_seg
             rgb_msg = self._rgb_msg
-        if det is None or rgb_msg is None:
+        if rgb_msg is None:
             return
-        # Isaac's sync requires detection stamp to match current camera messages (sim time).
-        stamped = copy.deepcopy(det)
-        stamped.header.stamp = rgb_msg.header.stamp
-        stamped.header.frame_id = rgb_msg.header.frame_id or stamped.header.frame_id
-        for item in stamped.detections:
-            item.header.stamp = rgb_msg.header.stamp
-            item.header.frame_id = stamped.header.frame_id
-        with self._lock:
-            self._last_det = stamped
-        self._pub_det.publish(stamped)
+        stamp = rgb_msg.header.stamp
+        frame_id = rgb_msg.header.frame_id
+
+        if self._use_seg_mask and seg is not None and self._pub_seg is not None:
+            stamped_seg = copy.deepcopy(seg)
+            stamped_seg.header.stamp = stamp
+            stamped_seg.header.frame_id = frame_id or stamped_seg.header.frame_id
+            with self._lock:
+                self._last_seg = stamped_seg
+            self._pub_seg.publish(stamped_seg)
+
+        if det is None:
+            return
+        # Legacy bbox path: keep detection stamps fresh for Detection2DToMask sync.
+        if not self._use_seg_mask:
+            stamped = copy.deepcopy(det)
+            stamped.header.stamp = stamp
+            stamped.header.frame_id = frame_id or stamped.header.frame_id
+            for item in stamped.detections:
+                item.header.stamp = stamp
+                item.header.frame_id = stamped.header.frame_id
+            with self._lock:
+                self._last_det = stamped
+            self._pub_det.publish(stamped)
 
     def _on_trigger(self, _req: Trigger.Request, resp: Trigger.Response) -> Trigger.Response:
         tgt = str(self.get_parameter("target_class").value).strip()
@@ -377,53 +608,66 @@ class FoundationPoseBridgeNode(Node):
             resp.message = str(exc)
             return resp
 
-        if depth_msg.encoding != "32FC1":
+        try:
+            depth = _depth_image_to_meters(depth_msg)
+        except ValueError as exc:
             resp.success = False
-            resp.message = f"Depth encoding must be 32FC1, got {depth_msg.encoding}"
+            resp.message = str(exc)
             return resp
-
-        depth = np.frombuffer(depth_msg.data, dtype=np.float32).reshape((depth_msg.height, depth_msg.width))
 
         label = tgt or "Box_1"
         score = 1.0
         use_latch = bool(self.get_parameter("use_latched_bbox_on_trigger").value)
         latch_xyxy = list(self.get_parameter("latched_bbox_xyxy").value)
+        latch_for_pick: Optional[list[float]] = None
         if use_latch and len(latch_xyxy) >= 4:
             x1, y1, x2, y2 = (float(latch_xyxy[0]), float(latch_xyxy[1]), float(latch_xyxy[2]), float(latch_xyxy[3]))
             if x2 > x1 + 2.0 and y2 > y1 + 2.0:
                 label = str(self.get_parameter("latched_bbox_label").value).strip() or label
+                latch_for_pick = [x1, y1, x2, y2]
                 self.get_logger().info(
-                    f"Trigger: using latched bbox from YOLO centering "
-                    f"({x1:.0f},{y1:.0f})-({x2:.0f},{y2:.0f}) label={label!r}"
+                    f"Trigger: latched bbox ({x1:.0f},{y1:.0f})-({x2:.0f},{y2:.0f}) label={label!r} "
+                    f"→ YOLO-seg match"
                 )
             else:
                 use_latch = False
 
-        if not use_latch:
-            bb = _yolo_pick_bbox_xyxy(
-                self._model,
-                rgb,
-                target_class=tgt or "Box_1",
-                min_conf=min_conf,
-                yolo_iou=yolo_iou,
-                predict_conf_floor=p_floor,
-                exclusive_scene_classes=excl_list,
-                class_match_case_insensitive=ci,
+        pick = _yolo_pick_detection(
+            self._model,
+            rgb,
+            target_class=label if use_latch else (tgt or "Box_1"),
+            min_conf=min_conf,
+            yolo_iou=yolo_iou,
+            predict_conf_floor=p_floor,
+            exclusive_scene_classes=excl_list,
+            class_match_case_insensitive=ci,
+            want_mask=self._use_seg_mask,
+            latch_xyxy=latch_for_pick,
+        )
+        if pick is None:
+            resp.success = False
+            resp.message = (
+                f"No YOLO detection for target_class={tgt!r} (conf≥{min_conf}). "
+                "Check target_class matches YOLO label (e.g. Box_1 not square_1)."
             )
-            if bb is None:
-                resp.success = False
-                resp.message = (
-                    f"No YOLO detection for target_class={tgt!r} (conf≥{min_conf}). "
-                    "Check target_class matches YOLO label (e.g. Box_1 not square_1)."
-                )
-                return resp
-            x1, y1, x2, y2, label, score = bb
+            return resp
+
+        x1, y1, x2, y2, label, score = pick.x1, pick.y1, pick.x2, pick.y2, pick.label, pick.score
         ix1 = int(round(x1))
         iy1 = int(round(y1))
         ix2 = int(round(x2))
         iy2 = int(round(y2))
 
         cframe = rgb_msg.header.frame_id or fid or frame_fb
+        img_h, img_w = rgb.shape[:2]
+        mask_full = pick.mask_full
+        if mask_full is None and self._use_seg_mask:
+            self.get_logger().warn(
+                "YOLO model returned no instance mask — falling back to bbox rectangle for segmentation."
+            )
+            mask_full = _bbox_binary_mask(img_h, img_w, ix1, iy1, ix2, iy2)
+        elif mask_full is None:
+            mask_full = _bbox_binary_mask(img_h, img_w, ix1, iy1, ix2, iy2)
 
         arr = Detection2DArray()
         arr.header.stamp = stamp
@@ -444,15 +688,24 @@ class FoundationPoseBridgeNode(Node):
         with self._lock:
             self._last_det = arr
 
+        if self._use_seg_mask and self._pub_seg is not None:
+            mask_fp = _resize_mask_nearest(mask_full, self._seg_w, self._seg_h)
+            seg_msg = _mask_to_image_msg(mask_fp, stamp, cframe)
+            self._pub_seg.publish(seg_msg)
+            with self._lock:
+                self._last_seg = seg_msg
+            fg_px = int(np.count_nonzero(mask_fp))
+            self.get_logger().info(
+                f"Trigger: YOLO-seg mask {self._seg_w}x{self._seg_h}, "
+                f"foreground={fg_px} px, det={label!r} conf={score:.3f}"
+            )
+
         use_rgb_cloud = bool(self.get_parameter("include_rgb_in_cloud").value)
         cloud_rgb = rgb if use_rgb_cloud else None
-        cloud = _bbox_to_pointcloud(
+        cloud = _mask_to_pointcloud(
             depth,
             cam_info,
-            ix1,
-            iy1,
-            ix2,
-            iy2,
+            mask_full,
             stride_px=stride,
             z_min=zmin,
             z_max=zmax,
@@ -463,15 +716,20 @@ class FoundationPoseBridgeNode(Node):
         self._pub_cloud.publish(cloud)
 
         resp.success = True
-        resp.message = f"Latched {label} conf={score:.3f}; det array + cloud published."
+        seg_note = f" seg→{self._seg_topic}" if self._use_seg_mask else ""
+        resp.message = f"Latched {label} conf={score:.3f}; det + cloud{seg_note} published."
         return resp
 
 
 def main() -> None:
+    from rclpy.executors import MultiThreadedExecutor
+
     rclpy.init()
     node = FoundationPoseBridgeNode()
+    executor = MultiThreadedExecutor(num_threads=4)
+    executor.add_node(node)
     try:
-        rclpy.spin(node)
+        executor.spin()
     except KeyboardInterrupt:
         pass
     finally:

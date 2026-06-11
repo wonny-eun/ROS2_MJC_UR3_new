@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """
-Bring up NVIDIA isaac_ros_foundationpose for the UR3 MuJoCo rl_camera stack.
+Isaac ROS FoundationPose for UR3 real robot + Intel RealSense D435i.
 
-Requires (e.g. from ~/.bashrc or setup_foundationpose_env.sh):
+Requires RealSense driver:
+  bash ~/ur3_control/launch_realsense_d435i_640x480.sh
 
-  FOUNDATION_POSE_MESH
-  FOUNDATION_POSE_REFINE_ENGINE
-  FOUNDATION_POSE_SCORE_ENGINE
-
-Optional: FOUNDATION_POSE_MASK_W/H (default 640x480), FOUNDATION_POSE_TEXTURE (optional texture map).
+Same env as sim (~/isaac_ros_assets/setup_foundationpose_env.sh):
+  FOUNDATION_POSE_MESH, FOUNDATION_POSE_REFINE_ENGINE, FOUNDATION_POSE_SCORE_ENGINE
 """
 
 from __future__ import annotations
@@ -22,7 +20,6 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import ComposableNodeContainer, Node, SetParameter
 from launch_ros.descriptions import ComposableNode
 
-# libcudart from cuda-cudart-12-6 lives under cuda-12.6/, but default ldconfig only lists cuda-12.9 paths.
 _CUDART_SEARCH_DIRS = (
     "/usr/local/cuda-12.6/targets/x86_64-linux/lib",
     "/usr/local/cuda-12.6/lib64",
@@ -69,7 +66,6 @@ def _cuda_ld_library_path() -> str:
 
 
 def _preflight_errors() -> list[str]:
-    """Return human-readable missing-dependency messages (empty if OK)."""
     errors: list[str] = []
     try:
         from ament_index_python.packages import get_package_share_directory
@@ -90,31 +86,27 @@ def _preflight_errors() -> list[str]:
                 f"ROS package '{pkg}' not found. Install:\n"
                 f"  sudo apt install ros-humble-{pkg.replace('_', '-')}"
             )
-    _npp = _find_npp_lib_dir()
-    if _npp is None:
+    if _find_npp_lib_dir() is None:
         errors.append(
             "libnppial.so.12 missing (rgb Nitros bridge needs NPP). Install or extract:\n"
-            "  apt-get download libnpp-12-6 && dpkg-deb -x libnpp-12-6_*.deb ~/isaac_ros_assets/npp_extract\n"
-            "  (setup_foundationpose_env.sh adds it to LD_LIBRARY_PATH)"
+            "  apt-get download libnpp-12-6 && dpkg-deb -x libnpp-12-6_*.deb ~/isaac_ros_assets/npp_extract"
         )
     import subprocess
 
     ld = subprocess.run(["ldconfig", "-p"], capture_output=True, text=True, check=False)
     if "libnvToolsExt.so" not in (ld.stdout or ""):
         errors.append(
-            "NVIDIA library libnvToolsExt.so.1 missing (FoundationPose node will not load). Install:\n"
+            "NVIDIA library libnvToolsExt.so.1 missing. Install:\n"
             "  sudo apt install libnvtoolsext1"
         )
     if _find_libcudart_dir() is None:
         errors.append(
-            "libcudart.so.12 not found on disk. Install:\n"
-            "  sudo apt install -y cuda-cudart-12-6\n"
-            "Optional (system-wide): bash ~/isaac_ros_assets/fix_cuda_ldconfig.sh"
+            "libcudart.so.12 not found. Install:\n"
+            "  sudo apt install -y cuda-cudart-12-6"
         )
-
     if _find_libcvcuda_dir() is None:
         errors.append(
-            "libcvcuda.so.0 (CV-CUDA) not found. Isaac FoundationPose GXF will fail. Install:\n"
+            "libcvcuda.so.0 (CV-CUDA) not found. Install:\n"
             "  bash ~/isaac_ros_assets/install_cvcuda.sh"
         )
     for label, path in (
@@ -122,7 +114,7 @@ def _preflight_errors() -> list[str]:
         ("FOUNDATION_POSE_SCORE_ENGINE", os.environ.get("FOUNDATION_POSE_SCORE_ENGINE", "")),
     ):
         if path and not os.path.isfile(path):
-            errors.append(f"{label} file not found: {path}\n  bash ~/isaac_ros_assets/build_foundationpose_engines.sh")
+            errors.append(f"{label} file not found: {path}")
     return errors
 
 
@@ -137,16 +129,10 @@ def generate_launch_description() -> LaunchDescription:
     preflight = _preflight_errors()
     if preflight:
         raise RuntimeError(
-            "isaac_foundation_pose_rlcamera.launch.py: cannot start — fix:\n\n" + "\n\n".join(preflight)
+            "isaac_foundation_pose_realsense.launch.py: cannot start — fix:\n\n" + "\n\n".join(preflight)
         )
 
-    try:
-        isaac_share = get_package_share_directory("isaac_ros_foundationpose")
-    except Exception as exc:
-        raise RuntimeError(
-            "isaac_ros_foundationpose not found — install ros-humble-isaac-ros-foundationpose"
-        ) from exc
-
+    isaac_share = get_package_share_directory("isaac_ros_foundationpose")
     try:
         mujoco_share = get_package_share_directory("ur3_mujoco_sim")
     except Exception:
@@ -162,7 +148,7 @@ def generate_launch_description() -> LaunchDescription:
     if not os.path.isfile(texture):
         raise RuntimeError(
             f"FoundationPose texture missing: {texture}\n"
-            "  Rebuild ur3_mujoco_sim after adding Blender textures, or set FOUNDATION_POSE_TEXTURE."
+            "  Set FOUNDATION_POSE_TEXTURE or rebuild ur3_mujoco_sim meshes."
         )
 
     mask_w = int(os.environ.get("FOUNDATION_POSE_MASK_W", "640"))
@@ -177,10 +163,11 @@ def generate_launch_description() -> LaunchDescription:
     use_yolo_seg_raw = os.environ.get("FOUNDATION_POSE_USE_YOLO_SEG_MASK", "1").strip().lower()
     use_yolo_seg_mask = use_yolo_seg_raw not in ("0", "false", "no", "off")
     launch_rviz = LaunchConfiguration("launch_rviz")
+    rgb_topic = LaunchConfiguration("rgb_topic")
+    depth_topic = LaunchConfiguration("depth_topic")
+    camera_info_topic = LaunchConfiguration("camera_info_topic")
 
-    # Single composable container at root namespace (matches isaac_ros_foundationpose_realsense).
     detections_topic = "/foundation_pose/yolo_detection2_d_array"
-
     foundationpose_params: dict = {
         "mesh_file_path": mesh,
         "texture_path": texture,
@@ -233,19 +220,20 @@ def generate_launch_description() -> LaunchDescription:
             }
         ],
         remappings=[
-            ("image", "/rl_camera/noisy/color"),
-            ("camera_info", "/rl_camera/camera_info"),
+            ("image", rgb_topic),
+            ("camera_info", camera_info_topic),
             ("resize/image", "rgb/image_rect_color"),
             ("resize/camera_info", "rgb/camera_info"),
         ],
     )
 
+    # RealSense aligned depth is 16UC1 (mm) — ConvertMetricNode accepts mono16 directly.
     depth_nitros_bridge = ComposableNode(
         package="isaac_ros_depth_image_proc",
         plugin="nvidia::isaac_ros::depth_image_proc::ConvertMetricNode",
         name="depth_nitros_bridge",
         remappings=[
-            ("image_raw", "/fp_bridge/depth_mono16"),
+            ("image_raw", depth_topic),
             ("image", "depth_registered/image_rect"),
         ],
     )
@@ -267,39 +255,14 @@ def generate_launch_description() -> LaunchDescription:
         package="rviz2",
         executable="rviz2",
         name="rviz2",
-        arguments=[
-            "-d",
-            os.path.join(isaac_share, "rviz", "foundationpose.rviz"),
-        ],
+        arguments=["-d", os.path.join(isaac_share, "rviz", "foundationpose.rviz")],
         condition=IfCondition(launch_rviz),
     )
 
     cuda_ld = _cuda_ld_library_path()
     env_actions = []
-    npp_dir = _find_npp_lib_dir()
     if cuda_ld:
         env_actions.append(SetEnvironmentVariable(name="LD_LIBRARY_PATH", value=cuda_ld))
-        env_actions.append(
-            LogInfo(
-                msg=(
-                    f"LD_LIBRARY_PATH: cuda={_find_libcudart_dir()} "
-                    f"cvcuda={_find_libcvcuda_dir()} npp={npp_dir}"
-                )
-            )
-        )
-
-    depth_mono16_node = Node(
-        package="ur3_rl_bridge",
-        executable="foundation_pose_depth_mono16_node",
-        name="foundation_pose_depth_mono16",
-        output="screen",
-        parameters=[
-            {
-                "input_topic": "/rl_camera/noisy/depth",
-                "output_topic": "/fp_bridge/depth_mono16",
-            }
-        ],
-    )
 
     output_tf_params: dict = {
         "output_topic": "/output",
@@ -317,33 +280,28 @@ def generate_launch_description() -> LaunchDescription:
         "tf_filter_lock_pos_tol_m": 0.003,
         "tf_filter_lock_rot_tol_deg": 1.0,
     }
-    # ROS launch rejects empty list params (serializes as () — invalid ParameterValue).
     if len(long_axis_in_object) == 3:
         output_tf_params["long_axis_in_object"] = long_axis_in_object
 
     return LaunchDescription(
         [
-            SetParameter(name="use_sim_time", value=True),
-            *env_actions,
             DeclareLaunchArgument("launch_rviz", default_value="false"),
-            LogInfo(msg=f"Isaac FoundationPose: mesh={mesh} texture={texture}"),
-            LogInfo(msg=f"  refine={refine}"),
-            LogInfo(msg=f"  score={score}"),
-            LogInfo(
-                msg=(
-                    "FoundationPose: single Nitros container (FP + rgb/depth bridges"
-                    + ("" if use_yolo_seg_mask else " + Detection2DToMask")
-                    + ")"
-                )
+            DeclareLaunchArgument(
+                "rgb_topic",
+                default_value="/camera/camera/color/image_raw",
             ),
-            LogInfo(
-                msg=(
-                    "Segmentation: YOLO-seg via foundation_pose_bridge → /segmentation"
-                    if use_yolo_seg_mask
-                    else "Segmentation: bbox via Detection2DToMask → /segmentation"
-                )
+            DeclareLaunchArgument(
+                "depth_topic",
+                default_value="/camera/camera/aligned_depth_to_color/image_raw",
             ),
-            depth_mono16_node,
+            DeclareLaunchArgument(
+                "camera_info_topic",
+                default_value="/camera/camera/color/camera_info",
+            ),
+            SetParameter(name="use_sim_time", value=False),
+            *env_actions,
+            LogInfo(msg=f"Isaac FoundationPose (RealSense D435i): mesh={mesh}"),
+            LogInfo(msg="  RealSense driver must be running (launch_realsense_d435i_640x480.sh)"),
             fp_container,
             rviz_node,
             Node(

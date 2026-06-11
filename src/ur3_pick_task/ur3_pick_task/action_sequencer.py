@@ -64,7 +64,7 @@ except ImportError:
 
 from ur3_pick_task.foundation_pose_grasp import (
     FoundationPoseStackLauncher,
-    HoverIkAttempt,
+    apply_foundation_pose_grasp_overrides,
     compute_base_tcp_pose,
     grasp_spec_for_class,
     grasp_spec_with_standoff,
@@ -73,6 +73,7 @@ from ur3_pick_task.foundation_pose_grasp import (
     normalize_T_base_object_for_grasp,
     object_yaw_for_grasp,
     object_z_tilt_from_vertical_deg,
+    resolve_tcp_roll_for_grasp,
     run_hover_convergence_loop,
     symmetry_axes_for_class,
     wait_for_detection3d_output,
@@ -80,6 +81,7 @@ from ur3_pick_task.foundation_pose_grasp import (
     wait_tf_stable,
     yaw_about_base_z,
 )
+from ur3_rl_bridge.yolo_scene_assign import assign_unique_scene_labels, pick_target_from_scene_assignments
 
 
 DEFAULT_CONFIG_FILE = (
@@ -331,6 +333,14 @@ def _merge_vision_config(config: Dict[str, Any]) -> Dict[str, Any]:
         # If non-empty: only one of these classes is expected in frame; pick the highest-confidence box among them
         # (reduces wrong-label duplicates, e.g. Cylinder_1 vs Cylinder_2 on the same object).
         "yolo_exclusive_scene_classes": [],
+        # When several boxes match target_class (label confusion): max_conf | closest_to_uv | scene_unique.
+        "yolo_pick_among_strategy": "scene_unique",
+        # One detection per class in scene; compare Cylinder_1 vs Cylinder_2 scores per object cluster.
+        "yolo_scene_unique_classes": True,
+        "yolo_scene_assign_rescore_crops": True,
+        "yolo_scene_assign_cluster_iou": 0.45,
+        # Per-class image hint [u, v] at Look pose; used with closest_to_uv when multiple target boxes.
+        "yolo_pick_preferred_uv_by_class": {},
         "yolo_depth_valid_min_m": 0.03,
         "yolo_depth_valid_max_m": 12.0,
         "yolo_depth_min_bbox_pixels": 12,
@@ -435,6 +445,10 @@ def _merge_foundation_pose_config(config: Dict[str, Any]) -> Dict[str, Any]:
         "plunge_min_fraction": 1.0,
         "plunge_max_step_m": 0.002,
         "plunge_cartesian_mode": "linear",
+        # Stop Isaac GPU stack when foundation_pose / foundation_pose_grasp actions finish.
+        "stop_stack_after_action": True,
+        # Also stop on sequencer exit (Ctrl+C / sequence done) if we launched the stack.
+        "stop_stack_on_sequencer_exit": True,
     }
     blk = config.get("foundation_pose")
     if isinstance(blk, dict):
@@ -469,6 +483,29 @@ def _merge_gripper_config(config: Dict[str, Any]) -> Dict[str, Any]:
         "position_kv": 30.0,
         "service_wait_timeout_sec": 10.0,
         "service_call_timeout_sec": 60.0,
+        # Real UR3: XM540 on U2D2 (see ~/ur3_control/gripper/dynamixel_adaptive_grasp.py)
+        "dynamixel_grasp_script": str(
+            Path.home() / "ur3_control" / "gripper" / "dynamixel_adaptive_grasp.py"
+        ),
+        "dynamixel_device": (
+            "/dev/serial/by-id/usb-FTDI_USB__-__Serial_Converter_FT891L5D-if00-port0"
+        ),
+        "dynamixel_baudrate": 1_000_000,
+        "dynamixel_id": 1,
+        "dynamixel_hold_time": 5.0,
+        "dynamixel_torque_off_after_hold": False,
+        "dynamixel_require_contact": False,
+        "dynamixel_interactive_prompt": False,
+        "dynamixel_pre_close_position": 0,
+        "dynamixel_skip_pre_close_move": False,
+        "dynamixel_open_position": 0,
+        "dynamixel_profile_velocity": 30,
+        "dynamixel_profile_acceleration": 10,
+        "dynamixel_open_profile_velocity": 45,
+        "dynamixel_open_profile_acceleration": 12,
+        "dynamixel_move_timeout_sec": 10.0,
+        "dynamixel_position_tolerance": 20,
+        "dynamixel_torque_off_after_move": False,
     }
     blk = config.get("gripper")
     if isinstance(blk, dict):
@@ -478,6 +515,107 @@ def _merge_gripper_config(config: Dict[str, Any]) -> Dict[str, Any]:
     return dict(defaults)
 
 
+def _resolve_yolo_pick_among_kwargs(
+    cfg: Dict[str, Any],
+    target_class: str,
+) -> Dict[str, Any]:
+    """Resolve multi-box pick strategy from action/vision cfg (per-class UV hints supported)."""
+    strategy = str(cfg.get("yolo_pick_among_strategy", "max_conf") or "max_conf").strip().lower()
+    preferred_uv: Optional[tuple[float, float]] = None
+    raw_uv = cfg.get("yolo_pick_preferred_uv")
+    if isinstance(raw_uv, (list, tuple)) and len(raw_uv) >= 2:
+        preferred_uv = (float(raw_uv[0]), float(raw_uv[1]))
+    else:
+        by_class = cfg.get("yolo_pick_preferred_uv_by_class") or {}
+        if isinstance(by_class, dict):
+            hint = by_class.get(target_class)
+            if hint is None:
+                hint = by_class.get(target_class.strip())
+            if hint is None and target_class.strip():
+                hint = by_class.get(target_class.strip().lower())
+            if isinstance(hint, (list, tuple)) and len(hint) >= 2:
+                preferred_uv = (float(hint[0]), float(hint[1]))
+    return {"pick_among_strategy": strategy, "preferred_uv": preferred_uv}
+
+
+def _resolve_yolo_scene_assign_kwargs(
+    vision_cfg: Dict[str, Any],
+    action_cfg: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Scene-unique assignment options + full class list (even when action filters to one target)."""
+    merged = {**vision_cfg}
+    if action_cfg:
+        merged.update(action_cfg)
+    strategy = str(merged.get("yolo_pick_among_strategy", "max_conf") or "max_conf").strip().lower()
+    scene_unique = bool(merged.get("yolo_scene_unique_classes", False)) or strategy == "scene_unique"
+    assign_classes: list[str] = []
+    raw_assign = merged.get("yolo_scene_assign_classes")
+    if isinstance(raw_assign, (list, tuple)):
+        assign_classes = [str(x).strip() for x in raw_assign if str(x).strip()]
+    if len(assign_classes) < 2:
+        raw_v = vision_cfg.get("yolo_exclusive_scene_classes")
+        if isinstance(raw_v, (list, tuple)):
+            tmp = [str(x).strip() for x in raw_v if str(x).strip()]
+            if len(tmp) >= 2:
+                assign_classes = tmp
+    if len(assign_classes) < 2:
+        raw_excl = merged.get("yolo_exclusive_scene_classes")
+        if isinstance(raw_excl, (list, tuple)):
+            tmp = [str(x).strip() for x in raw_excl if str(x).strip()]
+            if len(tmp) >= 2:
+                assign_classes = tmp
+    return {
+        "scene_unique_classes": scene_unique,
+        "scene_rescore_crops": bool(merged.get("yolo_scene_assign_rescore_crops", True)),
+        "scene_cluster_iou": float(merged.get("yolo_scene_assign_cluster_iou", 0.45)),
+        "scene_assign_exclusive_classes": assign_classes,
+        "pick_among_strategy": strategy,
+    }
+
+
+def _yolo_bbox_center_uv(box_xyxy: Any) -> tuple[float, float]:
+    bb = np.asarray(box_xyxy, dtype=np.float64).reshape(-1)
+    return (float(bb[0] + bb[2]) * 0.5, float(bb[1] + bb[3]) * 0.5)
+
+
+def _yolo_pick_target_match(
+    boxes: Any,
+    target_matches: list[tuple[float, int, str]],
+    *,
+    min_conf: float,
+    pick_among_strategy: str = "max_conf",
+    preferred_uv: Optional[tuple[float, float]] = None,
+    log_pick_fn: Optional[Callable[[str], None]] = None,
+) -> Optional[tuple[np.ndarray, float, str]]:
+    """Pick one box among several that match ``target_class``."""
+    viable = [(cf, i, cname) for cf, i, cname in target_matches if cf >= min_conf]
+    if not viable:
+        return None
+    if len(viable) > 1 and log_pick_fn is not None:
+        parts = [f"{cname}@{cf:.2f}" for cf, _, cname in sorted(viable, key=lambda x: -x[0])]
+        log_pick_fn(
+            f"yolo pick: {len(viable)} box(es) match target_class "
+            f"(strategy={pick_among_strategy!r}): [{', '.join(parts)}]"
+        )
+    strategy = (pick_among_strategy or "max_conf").strip().lower()
+    if len(viable) > 1 and strategy == "closest_to_uv" and preferred_uv is not None:
+        pu, pv = preferred_uv
+
+        def _dist2(entry: tuple[float, int, str]) -> float:
+            cu, cv = _yolo_bbox_center_uv(boxes.xyxy[entry[1]].cpu().numpy())
+            du, dv = cu - pu, cv - pv
+            return du * du + dv * dv
+
+        cf_w, i_w, cname_w = min(viable, key=_dist2)
+    else:
+        if len(viable) > 1 and strategy == "closest_to_uv" and preferred_uv is None and log_pick_fn is not None:
+            log_pick_fn(
+                "yolo pick: closest_to_uv requested but yolo_pick_preferred_uv unset; using max_conf."
+            )
+        cf_w, i_w, cname_w = max(viable, key=lambda x: x[0])
+    return boxes.xyxy[i_w].cpu().numpy(), cf_w, cname_w
+
+
 def _ultralytics_pick_bbox_xyxy_and_conf(
     results: Any,
     *,
@@ -485,12 +623,62 @@ def _ultralytics_pick_bbox_xyxy_and_conf(
     min_conf: float,
     class_match_case_insensitive: bool,
     exclusive_scene_classes: Optional[list[str]],
+    pick_among_strategy: str = "max_conf",
+    preferred_uv: Optional[tuple[float, float]] = None,
+    scene_unique_classes: bool = False,
+    scene_rescore_crops: bool = True,
+    scene_cluster_iou: float = 0.45,
+    scene_assign_exclusive_classes: Optional[list[str]] = None,
+    model: Any = None,
+    rgb: Optional[np.ndarray] = None,
+    predict_conf_floor: float = 0.01,
+    yolo_iou: float = 0.5,
     log_exclusive_fn: Optional[Callable[[str], None]] = None,
+    log_pick_fn: Optional[Callable[[str], None]] = None,
 ) -> Optional[tuple[np.ndarray, float, str]]:
     """
     Match ``_yolo_detection_center_ray`` box selection semantics.
     Returns (xyxy ndarray shape (4,), conf, winning_class_label) or None.
     """
+    exclusive_list: Optional[list[str]] = None
+    if isinstance(exclusive_scene_classes, (list, tuple)):
+        tmp = [str(x).strip() for x in exclusive_scene_classes if str(x).strip()]
+        if tmp:
+            exclusive_list = tmp
+
+    strategy = (pick_among_strategy or "max_conf").strip().lower()
+    use_scene_unique = bool(scene_unique_classes) or strategy == "scene_unique"
+    assign_list = scene_assign_exclusive_classes if scene_assign_exclusive_classes else exclusive_list
+    if use_scene_unique and assign_list and len(assign_list) >= 2 and rgb is not None:
+        assigned = assign_unique_scene_labels(
+            results,
+            exclusive_scene_classes=assign_list,
+            rgb=rgb,
+            model=model,
+            case_insensitive=class_match_case_insensitive,
+            predict_conf_floor=float(predict_conf_floor),
+            yolo_iou=float(yolo_iou),
+            cluster_iou=float(scene_cluster_iou),
+            rescore_crops=bool(scene_rescore_crops),
+            log_fn=log_pick_fn,
+        )
+        picked_scene = pick_target_from_scene_assignments(
+            assigned,
+            target_class=target_class,
+            min_conf=min_conf,
+            case_insensitive=class_match_case_insensitive,
+        )
+        if picked_scene is not None:
+            return picked_scene
+        if log_exclusive_fn is not None:
+            seen = sorted({d.class_name for d in assigned})
+            log_exclusive_fn(
+                "yolo scene unique: "
+                f"target_class={target_class!r} not assigned among {seen!r} "
+                f"(min_conf={min_conf:.3f})."
+            )
+        return None
+
     best_conf = -1.0
     best_box: Optional[np.ndarray] = None
     win_label = ""
@@ -500,11 +688,6 @@ def _ultralytics_pick_bbox_xyxy_and_conf(
     if class_match_case_insensitive:
         target_cmp = target_cmp.lower()
 
-    exclusive_list: Optional[list[str]] = None
-    if isinstance(exclusive_scene_classes, (list, tuple)):
-        tmp = [str(x).strip() for x in exclusive_scene_classes if str(x).strip()]
-        if tmp:
-            exclusive_list = tmp
     if class_match_case_insensitive:
         exclusive_norm = {x.lower() for x in exclusive_list} if exclusive_list else set()
     else:
@@ -526,11 +709,16 @@ def _ultralytics_pick_bbox_xyxy_and_conf(
                 if (cname.lower() if class_match_case_insensitive else cname) == target_cmp
             ]
             if target_matches:
-                cf_w, i_w, cname_w = max(target_matches, key=lambda x: x[0])
-                if cf_w >= min_conf:
-                    best_conf = cf_w
-                    best_box = boxes.xyxy[i_w].cpu().numpy()
-                    win_label = cname_w
+                picked_tm = _yolo_pick_target_match(
+                    boxes,
+                    target_matches,
+                    min_conf=min_conf,
+                    pick_among_strategy=pick_among_strategy,
+                    preferred_uv=preferred_uv,
+                    log_pick_fn=log_pick_fn,
+                )
+                if picked_tm is not None:
+                    best_box, best_conf, win_label = picked_tm
             elif log_exclusive_fn is not None:
                 others = sorted({cname for _, _, cname in candidates})
                 log_exclusive_fn(
@@ -540,6 +728,7 @@ def _ultralytics_pick_bbox_xyxy_and_conf(
                 )
 
     if best_box is None and boxes is not None and boxes.cls is not None:
+        fallback_matches: list[tuple[float, int, str]] = []
         for i in range(len(boxes)):
             cid = int(boxes.cls[i].item())
             cf = float(boxes.conf[i].item())
@@ -549,10 +738,17 @@ def _ultralytics_pick_bbox_xyxy_and_conf(
                     continue
             elif cname != target_class.strip():
                 continue
-            if cf > best_conf:
-                best_conf = cf
-                best_box = boxes.xyxy[i].cpu().numpy()
-                win_label = cname
+            fallback_matches.append((cf, i, cname))
+        picked_fb = _yolo_pick_target_match(
+            boxes,
+            fallback_matches,
+            min_conf=min_conf,
+            pick_among_strategy=pick_among_strategy,
+            preferred_uv=preferred_uv,
+            log_pick_fn=log_pick_fn,
+        )
+        if picked_fb is not None:
+            best_box, best_conf, win_label = picked_fb
 
     if best_box is None or best_conf < min_conf:
         return None
@@ -992,6 +1188,7 @@ class MotionManager(Node):
         self.declare_parameter("publish_action_completed_topic", "")
         self.declare_parameter("speed_scale", 1.0, ParameterDescriptor(dynamic_typing=True))
         self.declare_parameter("robot_backend", "", ParameterDescriptor(dynamic_typing=True))
+        self.declare_parameter("foundation_pose_tcp_roll_deg", "", ParameterDescriptor(dynamic_typing=True))
 
         self.config_file = str(self.get_parameter("config_file").value)
         self.sequence_name = str(self.get_parameter("sequence_name").value)
@@ -1043,6 +1240,7 @@ class MotionManager(Node):
                 f"camera_info={self.vision_cfg.get('camera_info_topic')}"
             )
         self.foundation_pose_cfg = _merge_foundation_pose_config(self.config)
+        self._apply_cli_foundation_pose_tcp_roll()
         self.gripper_cfg = _merge_gripper_config(self.config)
         self._latest_joint_state: Optional[JointState] = None
         self._vis_lock = threading.Lock()
@@ -1179,6 +1377,15 @@ class MotionManager(Node):
             rclpy.spin_once(self, timeout_sec=min(0.05, end - time.monotonic()))
 
     def cleanup(self) -> None:
+        if self._yolo_detection_is_armed():
+            self._disarm_yolo_detection()
+        fp_stack = getattr(self, "_fp_stack", None)
+        if fp_stack is not None and bool(self.foundation_pose_cfg.get("stop_stack_on_sequencer_exit", True)):
+            if fp_stack.stack_active():
+                self.get_logger().info(
+                    "foundation_pose: stopping stack on sequencer exit (stop_stack_on_sequencer_exit=true)."
+                )
+                fp_stack.stop_completely()
         listener = getattr(self, "_tf_listener", None)
         if listener is None:
             return
@@ -1237,24 +1444,67 @@ class MotionManager(Node):
             self._vis_depth = None
             self._vis_info = None
 
-    def _ensure_vision_subscriptions_for_yolo(self) -> None:
+    def _yolo_detection_is_armed(self) -> bool:
+        return bool(self._vision_subscriptions)
+
+    def _arm_yolo_detection(self, *, preload_model: bool = True) -> None:
         """
-        Subscribe to camera topics only when a yolo_visual_center action starts.
-        Avoids buffering stale images during earlier sequence motions after ros2 run.
+        Subscribe to camera topics and optionally load YOLO weights.
+
+        Use per-action YAML ``yolo_detection_enable`` (typically on Look, after the joint
+        move completes and before ``delay_after_sec`` warmup) so detection is ready before
+        ``yolo_visual_center`` without running inference for the whole sequence.
         """
-        if self._vision_subscriptions:
-            return
         rgb_t = str(self.vision_cfg["rgb_topic"])
         depth_t = str(self.vision_cfg["depth_topic"])
         info_t = str(self.vision_cfg["camera_info_topic"])
-        self._vision_subscriptions = [
-            self.create_subscription(Image, rgb_t, self._on_vision_rgb, 1),
-            self.create_subscription(Image, depth_t, self._on_vision_depth, 1),
-            self.create_subscription(CameraInfo, info_t, self._on_vision_info, 1),
-        ]
-        self.get_logger().info(
-            f"yolo_visual_center: vision subscriptions armed ({rgb_t}, {depth_t}, {info_t}) — detection uses frames from now on."
-        )
+        if not self._vision_subscriptions:
+            self._vision_subscriptions = [
+                self.create_subscription(Image, rgb_t, self._on_vision_rgb, 1),
+                self.create_subscription(Image, depth_t, self._on_vision_depth, 1),
+                self.create_subscription(CameraInfo, info_t, self._on_vision_info, 1),
+            ]
+            self.get_logger().info(
+                f"YOLO detection armed ({rgb_t}, {depth_t}, {info_t})."
+            )
+        else:
+            self.get_logger().debug("YOLO detection already armed.")
+        self._clear_vision_buffers()
+        if preload_model:
+            model_path = str(self.vision_cfg.get("yolo_model_path", "")).strip()
+            if model_path:
+                self._get_yolo_model(model_path)
+
+    def _disarm_yolo_detection(self) -> None:
+        """Release camera subscriptions and unload YOLO weights (see ``yolo_detection_disable`` in YAML)."""
+        if self._vision_subscriptions:
+            for sub in self._vision_subscriptions:
+                self.destroy_subscription(sub)
+            self._vision_subscriptions = []
+        self._clear_vision_buffers()
+        if self._yolo_model is not None:
+            self._yolo_model = None
+            self._yolo_loaded_path = ""
+        self.get_logger().info("YOLO detection disarmed (camera subscriptions released, model unloaded).")
+
+    def _ensure_vision_subscriptions_for_yolo(self) -> None:
+        """Legacy entry: arm vision if a yolo_visual_center action runs without prior Look enable."""
+        self._arm_yolo_detection()
+
+    def _yolo_detection_lifecycle_before_action(self, action: Dict[str, Any]) -> None:
+        if bool(action.get("yolo_detection_enable_before", False)):
+            self._arm_yolo_detection()
+        if bool(action.get("yolo_detection_disable_before", False)):
+            self._disarm_yolo_detection()
+
+    def _yolo_detection_lifecycle_after_action(self, action: Dict[str, Any], *, success: bool) -> None:
+        if bool(action.get("yolo_detection_enable", False)):
+            if success or bool(action.get("yolo_detection_enable_on_failure", False)):
+                self._arm_yolo_detection()
+        if bool(action.get("yolo_detection_disable", False)):
+            always = bool(action.get("yolo_detection_disable_always", True))
+            if success or always:
+                self._disarm_yolo_detection()
 
     def _wait_vision_frames(self, timeout_sec: float) -> bool:
         deadline = time.monotonic() + float(timeout_sec)
@@ -1309,7 +1559,23 @@ class MotionManager(Node):
             min_conf=float(min_conf),
             class_match_case_insensitive=ci,
             exclusive_scene_classes=ex_list,
+            pick_among_strategy=str(
+                ray_kw.get(
+                    "pick_among_strategy",
+                    self.vision_cfg.get("yolo_pick_among_strategy", "max_conf"),
+                )
+            ),
+            preferred_uv=ray_kw.get("preferred_uv"),
+            scene_unique_classes=bool(ray_kw.get("scene_unique_classes", False)),
+            scene_rescore_crops=bool(ray_kw.get("scene_rescore_crops", True)),
+            scene_cluster_iou=float(ray_kw.get("scene_cluster_iou", 0.45)),
+            scene_assign_exclusive_classes=ray_kw.get("scene_assign_exclusive_classes"),
+            model=model,
+            rgb=rgb,
+            predict_conf_floor=float(predict_floor),
+            yolo_iou=float(yolo_iou),
             log_exclusive_fn=lambda m: self.get_logger().debug(m),
+            log_pick_fn=lambda m: self.get_logger().info(m),
         )
         if picked is None:
             return
@@ -1369,6 +1635,53 @@ class MotionManager(Node):
     def _foundation_pose_stack_launch_file(self, fp_cfg: Dict[str, Any]) -> Optional[str]:
         name = str(fp_cfg.get("stack_launch_file", "")).strip()
         return name or None
+
+    def _apply_cli_foundation_pose_tcp_roll(self) -> None:
+        """CLI / launch param: extra FoundationPose grasp TCP roll offset in degrees."""
+        val = self.get_parameter("foundation_pose_tcp_roll_deg").value
+        if val is None or val == "":
+            return
+        if isinstance(val, (int, float)):
+            roll_deg = float(val)
+        else:
+            raw = str(val).strip()
+            if not raw:
+                return
+            try:
+                roll_deg = float(raw)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"foundation_pose_tcp_roll_deg must be a number (got {raw!r})") from exc
+        if not math.isfinite(roll_deg):
+            raise ValueError(f"foundation_pose_tcp_roll_deg must be finite (got {roll_deg!r})")
+        roll_rad = math.radians(roll_deg)
+        self.foundation_pose_cfg["tcp_roll_rad"] = roll_rad
+        self.get_logger().info(
+            f"FoundationPose grasp TCP roll offset from CLI: {roll_deg:.1f}° "
+            f"(added to object yaw when sync_object_yaw_as_tcp_roll=true, tcp_roll_rad={roll_rad:.6f})"
+        )
+
+    def _foundation_pose_cfg_for_action(self, action: Dict[str, Any]) -> Dict[str, Any]:
+        cfg_fp = dict(self.foundation_pose_cfg)
+        if isinstance(action.get("foundation_pose"), dict):
+            cfg_fp.update(dict(action["foundation_pose"]))
+        if "stop_stack_after_action" in action:
+            cfg_fp["stop_stack_after_action"] = action["stop_stack_after_action"]
+        return cfg_fp
+
+    def _foundation_pose_maybe_stop_stack_after_action(
+        self, cfg_fp: Dict[str, Any], action: Dict[str, Any]
+    ) -> None:
+        if not bool(cfg_fp.get("stop_stack_after_action", False)):
+            return
+        fp_stack = getattr(self, "_fp_stack", None)
+        if fp_stack is None:
+            return
+        name = str(action.get("name", action.get("type", "foundation_pose")))
+        self.get_logger().info(
+            f"foundation_pose: stopping Isaac stack after action {name!r} "
+            "(stop_stack_after_action=true)."
+        )
+        fp_stack.stop_completely()
 
     def _foundation_pose_ensure_stack_running(
         self,
@@ -1935,8 +2248,7 @@ class MotionManager(Node):
         try:
             grasp_by_class = self._load_grasp_by_class(cfg_fp)
             grasp_spec = grasp_spec_for_class(grasp_by_class, tgt)
-            if isinstance(action.get("grasp"), dict):
-                grasp_spec.update(dict(action["grasp"]))
+            grasp_spec = apply_foundation_pose_grasp_overrides(grasp_spec, cfg_fp, action)
         except ValueError as exc:
             self.get_logger().error(f"foundation_pose_grasp: {exc}")
             return False
@@ -1983,17 +2295,24 @@ class MotionManager(Node):
             "grip_point_offset_m",
             grasp_spec.get("position_offset_m", [0, 0, 0]),
         )
+        offset_frame = str(
+            grasp_spec.get("grip_point_offset_frame", grasp_spec.get("grip_offset_frame", "object"))
+        )
         lookat = grasp_spec.get("lookat_vector", [0.0, 0.0, -1.0])
+        _, tcp_roll, sync_yaw = resolve_tcp_roll_for_grasp(T_base_object, grasp_spec)
         roll_off = float(grasp_spec.get("tcp_roll_rad", 0.0))
-        sync_yaw = bool(grasp_spec.get("sync_object_yaw_as_tcp_roll", True))
-        obj_yaw = object_yaw_for_grasp(T_base_object[:3, :3], grasp_spec) if sync_yaw else 0.0
+        roll_mode = "yaw+offset" if sync_yaw else "offset_only"
+        pos_mode = "fp_pose"
         base = str(self.motion_cfg.get("base_frame", "base_link"))
         self.get_logger().info(
             f"foundation_pose_grasp: class={tgt!r} grip_offset_m={offset} "
+            f"grip_offset_frame={offset_frame!r} "
             f"lookat_base={lookat} hover_standoff_m={hover_standoff:.3f} "
             f"touch_standoff_m={touch_standoff:.3f} "
-            f"object_yaw={math.degrees(obj_yaw):.1f}° tcp_roll={math.degrees(obj_yaw + roll_off):.1f}° "
-            f"(sync_yaw={sync_yaw}) → two-stage MoveIt on {tcp_link!r}"
+            f"position_mode={pos_mode} "
+            f"tcp_roll={math.degrees(tcp_roll):.1f}° "
+            f"(roll_mode={roll_mode}, sync_yaw={sync_yaw}, tcp_roll_rad={math.degrees(roll_off):.1f}°) "
+            f"→ two-stage MoveIt on {tcp_link!r}"
         )
         self.get_logger().info(
             f"foundation_pose_grasp: HOVER TCP in {base!r}: "
@@ -2039,12 +2358,14 @@ class MotionManager(Node):
         )
         scales = tuple(float(s) for s in step_scales)
 
-        def _solve_step() -> Optional[HoverIkAttempt]:
-            result = self._solve_ik_with_step_scales_result(pose_hover, action, scales)
+        def _solve_at_scale(step_scale: float) -> Optional[list[float]]:
+            result = self._solve_ik_with_step_scales_result(pose_hover, action, (step_scale,))
             if result is None:
                 return None
-            joints, scale = result
-            return HoverIkAttempt(joint_positions=joints, step_scale=scale)
+            return result[0]
+
+        def _execute_at_scale(joints: list[float], _step_scale: float) -> bool:
+            return self._execute_joint_goal(action, joints)
 
         def _settle() -> None:
             if settle_sec > 0.0:
@@ -2052,8 +2373,9 @@ class MotionManager(Node):
 
         return run_hover_convergence_loop(
             max_iterations=max_iter,
-            solve_toward_hover=_solve_step,
-            execute_joints=lambda joints: self._execute_joint_goal(action, joints),
+            step_scales=scales,
+            solve_at_scale=_solve_at_scale,
+            execute_at_scale=_execute_at_scale,
             settle_after_partial=_settle,
             log_info=self.get_logger().info,
             log_warn=self.get_logger().warn,
@@ -2834,6 +3156,12 @@ class MotionManager(Node):
         depth_valid_max_m: float = 12.0,
         depth_min_bbox_pixels: int = 12,
         exclusive_scene_classes: Optional[list[str]] = None,
+        pick_among_strategy: str = "max_conf",
+        preferred_uv: Optional[tuple[float, float]] = None,
+        scene_unique_classes: bool = False,
+        scene_rescore_crops: bool = True,
+        scene_cluster_iou: float = 0.45,
+        scene_assign_exclusive_classes: Optional[list[str]] = None,
     ) -> Optional[tuple[int, int, float, float, float, float, float, float]]:
         """
         Run YOLO and return bbox image center back-projected in camera optical coords:
@@ -2857,7 +3185,18 @@ class MotionManager(Node):
             min_conf=min_conf,
             class_match_case_insensitive=class_match_case_insensitive,
             exclusive_scene_classes=exclusive_list_fp,
+            pick_among_strategy=pick_among_strategy,
+            preferred_uv=preferred_uv,
+            scene_unique_classes=scene_unique_classes,
+            scene_rescore_crops=scene_rescore_crops,
+            scene_cluster_iou=scene_cluster_iou,
+            scene_assign_exclusive_classes=scene_assign_exclusive_classes,
+            model=model,
+            rgb=rgb,
+            predict_conf_floor=float(predict_conf_floor),
+            yolo_iou=float(yolo_iou),
             log_exclusive_fn=lambda m: self.get_logger().debug(m),
+            log_pick_fn=lambda m: self.get_logger().info(m),
         )
         if picked is None:
             return None
@@ -5912,6 +6251,17 @@ class MotionManager(Node):
         excl = cfg.get("yolo_exclusive_scene_classes")
         if isinstance(excl, (list, tuple)) and len(excl) > 0:
             ray_kw["exclusive_scene_classes"] = [str(x).strip() for x in excl if str(x).strip()]
+        pick_kw = _resolve_yolo_pick_among_kwargs(cfg, target_class)
+        ray_kw["pick_among_strategy"] = pick_kw["pick_among_strategy"]
+        if pick_kw["preferred_uv"] is not None:
+            ray_kw["preferred_uv"] = pick_kw["preferred_uv"]
+        scene_kw = _resolve_yolo_scene_assign_kwargs(self.vision_cfg, cfg)
+        ray_kw.update(scene_kw)
+        if scene_kw.get("scene_unique_classes") and scene_kw.get("scene_assign_exclusive_classes"):
+            self.get_logger().info(
+                "yolo scene unique: assign "
+                f"{scene_kw['scene_assign_exclusive_classes']!r} → pick {target_class!r}"
+            )
         redetect_sessions_left = max(0, int(cfg.get("yolo_visual_center_redetect_max_sessions", 3)))
         redetect_misses = max(1, int(cfg.get("yolo_visual_center_redetect_after_misses", 10)))
         consecutive_miss = 0
@@ -6919,7 +7269,9 @@ class MotionManager(Node):
         """
         Optional per-action MoveIt scene updates (independent of MuJoCo).
         Keys: detach_preset, attach_preset, keepout_preset (alias forbidden_zone).
+        YOLO lifecycle: yolo_detection_enable_before, yolo_detection_disable_before.
         """
+        self._yolo_detection_lifecycle_before_action(action)
         settle = float(
             action.get(
                 "planning_scene_settle_sec",
@@ -6937,6 +7289,7 @@ class MotionManager(Node):
             self._planning_scene_add_keepout_from_preset(str(kz), action, settle_sec=settle)
 
     def _environment_after_action(self, action: Dict[str, Any], *, success: bool) -> None:
+        self._yolo_detection_lifecycle_after_action(action, success=success)
         if not success:
             return
         if not bool(action.get("keepout_remove_after", True)):
@@ -7036,13 +7389,29 @@ class MotionManager(Node):
         if action_type == "trigger":
             return self._execute_trigger_action(action)
         if action_type in ("foundation_pose", "foundation_pose_wait"):
-            return self._execute_foundation_pose_action(action)
+            cfg_fp = self._foundation_pose_cfg_for_action(action)
+            try:
+                return self._execute_foundation_pose_action(action)
+            finally:
+                self._foundation_pose_maybe_stop_stack_after_action(cfg_fp, action)
         if action_type in ("foundation_pose_grasp", "foundation_pose_grasp_move"):
-            return self._execute_foundation_pose_grasp_action(action)
+            cfg_fp = self._foundation_pose_cfg_for_action(action)
+            try:
+                return self._execute_foundation_pose_grasp_action(action)
+            finally:
+                self._foundation_pose_maybe_stop_stack_after_action(cfg_fp, action)
         if action_type in ("yolo_visual_center", "visual_center_yolo", "yolo_visual_lookat_and_approach"):
             return self._execute_yolo_visual_center_action(action)
         if action_type in ("gripper_hybrid_close", "gripper_close_hybrid"):
             return self._execute_gripper_hybrid_close_action(action)
+        if action_type in ("dynamixel_move", "dynamixel_position", "dynamixel_goal"):
+            if self.robot_backend != "real":
+                self.get_logger().info(
+                    f"Skipping Dynamixel action '{action.get('name', action_type)}' "
+                    f"(robot_backend={self.robot_backend})."
+                )
+                return True
+            return self._execute_dynamixel_move_action(action)
         if action_type in ("gripper_hybrid_open", "gripper_open"):
             return self._execute_gripper_hybrid_open_action(action)
         raise ValueError(f"Unsupported action type: {action_type!r}")
@@ -7337,8 +7706,246 @@ class MotionManager(Node):
         )
         return True
 
+    def _dynamixel_cfg_for_action(self, action: Dict[str, Any]) -> Dict[str, Any]:
+        cfg = dict(self.gripper_cfg)
+        if isinstance(action.get("gripper"), dict):
+            cfg.update(dict(action["gripper"]))
+        for key, value in action.items():
+            if str(key).startswith("dynamixel_"):
+                cfg[key] = value
+        return cfg
+
+    def _dynamixel_goal_position_from_action(
+        self, action: Dict[str, Any], cfg: Dict[str, Any], *, for_pre_close: bool = False
+    ) -> int:
+        if for_pre_close:
+            if "dynamixel_pre_close_position" in action:
+                return int(action["dynamixel_pre_close_position"])
+            return int(cfg.get("dynamixel_pre_close_position", 0))
+        for key in ("goal_position", "dynamixel_goal_position", "position"):
+            if key in action:
+                return int(action[key])
+        return int(cfg.get("dynamixel_pre_close_position", 0))
+
+    def _dynamixel_open_position_from_action(
+        self, action: Dict[str, Any], cfg: Dict[str, Any]
+    ) -> int:
+        for key in ("goal_position", "dynamixel_open_position", "dynamixel_goal_position", "position"):
+            if key in action:
+                return int(action[key])
+        return int(cfg.get("dynamixel_open_position", 0))
+
+    def _dynamixel_move_profiles_from_action(
+        self,
+        action: Dict[str, Any],
+        cfg: Dict[str, Any],
+        *,
+        for_open: bool = False,
+        for_close: bool = False,
+    ) -> tuple[int, int]:
+        if for_open:
+            vel = action.get(
+                "dynamixel_open_profile_velocity",
+                cfg.get("dynamixel_open_profile_velocity", 45),
+            )
+            acc = action.get(
+                "dynamixel_open_profile_acceleration",
+                cfg.get("dynamixel_open_profile_acceleration", 12),
+            )
+        elif for_close:
+            vel = action.get(
+                "dynamixel_close_profile_velocity",
+                action.get(
+                    "dynamixel_profile_velocity",
+                    cfg.get("dynamixel_close_profile_velocity", cfg.get("dynamixel_profile_velocity", 30)),
+                ),
+            )
+            acc = action.get(
+                "dynamixel_close_profile_acceleration",
+                action.get(
+                    "dynamixel_profile_acceleration",
+                    cfg.get(
+                        "dynamixel_close_profile_acceleration",
+                        cfg.get("dynamixel_profile_acceleration", 10),
+                    ),
+                ),
+            )
+        else:
+            vel = action.get("dynamixel_profile_velocity", cfg.get("dynamixel_profile_velocity", 30))
+            acc = action.get(
+                "dynamixel_profile_acceleration", cfg.get("dynamixel_profile_acceleration", 10)
+            )
+        return int(vel), int(acc)
+
+    def _load_dynamixel_grasp_module(self, script_path: Path):
+        import importlib.util
+        import sys
+
+        mod_name = "ur3_dynamixel_adaptive_grasp"
+        spec = importlib.util.spec_from_file_location(mod_name, script_path)
+        if spec is None or spec.loader is None:
+            return None
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[mod_name] = module
+        spec.loader.exec_module(module)
+        return module
+
+    def _execute_dynamixel_move_action(
+        self,
+        action: Dict[str, Any],
+        *,
+        for_open: bool = False,
+        for_close: bool = False,
+    ) -> bool:
+        """Real robot: move XM540 to absolute encoder goal (position control)."""
+        cfg = self._dynamixel_cfg_for_action(action)
+        script_path = Path(str(cfg.get("dynamixel_grasp_script", "")).strip()).expanduser()
+        if not script_path.is_file():
+            self.get_logger().error(f"dynamixel_move: script not found: {script_path}")
+            return False
+
+        module = self._load_dynamixel_grasp_module(script_path)
+        if module is None:
+            self.get_logger().error(f"dynamixel_move: cannot load {script_path}")
+            return False
+
+        grasp_cfg_cls = getattr(module, "GraspConfig", None)
+        run_move_fn = getattr(module, "run_move_to_position", None)
+        if grasp_cfg_cls is None or run_move_fn is None:
+            self.get_logger().error(
+                f"dynamixel_move: {script_path} missing GraspConfig / run_move_to_position"
+            )
+            return False
+
+        grasp_cfg = grasp_cfg_cls.from_mapping(cfg)
+        device = Path(grasp_cfg.device)
+        if not device.exists():
+            self.get_logger().error(
+                f"dynamixel_move: serial device missing: {grasp_cfg.device} (plug in U2D2)"
+            )
+            return False
+
+        if for_open:
+            goal = self._dynamixel_open_position_from_action(action, cfg)
+        elif for_close:
+            goal = self._dynamixel_goal_position_from_action(action, cfg, for_pre_close=True)
+        else:
+            goal = self._dynamixel_goal_position_from_action(action, cfg)
+        prof_vel, prof_acc = self._dynamixel_move_profiles_from_action(
+            action, cfg, for_open=for_open, for_close=for_close
+        )
+        leave_torque_on = action.get("dynamixel_leave_torque_on")
+        if leave_torque_on is None:
+            leave_torque_on = not bool(
+                action.get("dynamixel_torque_off_after_move", grasp_cfg.torque_off_after_move)
+            )
+
+        label = "dynamixel_open" if for_open else "dynamixel_move"
+        self.get_logger().info(
+            f"{label}: goal_position={goal} profile_vel={prof_vel} profile_acc={prof_acc} "
+            f"id={grasp_cfg.dxl_id} device={grasp_cfg.device}"
+        )
+
+        def _log(msg: str) -> None:
+            self.get_logger().info(str(msg))
+
+        try:
+            run_move_fn(
+                grasp_cfg,
+                goal,
+                profile_velocity=prof_vel,
+                profile_acceleration=prof_acc,
+                log_print=_log,
+                leave_torque_on=bool(leave_torque_on),
+            )
+        except Exception as exc:  # noqa: BLE001
+            self.get_logger().error(f"{label} failed: {exc}")
+            return False
+
+        self.get_logger().info(f"{label}: OK (goal_position={goal})")
+        return True
+
+    def _execute_dynamixel_gripper_open_action(self, action: Dict[str, Any]) -> bool:
+        """Real robot: open gripper — position move to open_position with open profile."""
+        open_action = dict(action)
+        open_action.setdefault("dynamixel_leave_torque_on", True)
+        return self._execute_dynamixel_move_action(open_action, for_open=True)
+
+    def _execute_dynamixel_gripper_close_action(self, action: Dict[str, Any]) -> bool:
+        """Real robot: XM540 adaptive grasp via ~/ur3_control/gripper/dynamixel_adaptive_grasp.py."""
+        cfg = self._dynamixel_cfg_for_action(action)
+        script_path = Path(str(cfg.get("dynamixel_grasp_script", "")).strip()).expanduser()
+        if not script_path.is_file():
+            self.get_logger().error(
+                f"gripper_hybrid_close (real): dynamixel script not found: {script_path}"
+            )
+            return False
+
+        module = self._load_dynamixel_grasp_module(script_path)
+        if module is None:
+            self.get_logger().error(f"gripper_hybrid_close (real): cannot load {script_path}")
+            return False
+
+        grasp_cfg_cls = getattr(module, "GraspConfig", None)
+        run_fn = getattr(module, "run_adaptive_grasp", None)
+        if grasp_cfg_cls is None or run_fn is None:
+            self.get_logger().error(
+                f"gripper_hybrid_close (real): {script_path} missing GraspConfig / run_adaptive_grasp"
+            )
+            return False
+
+        grasp_cfg = grasp_cfg_cls.from_mapping(cfg)
+        device = Path(grasp_cfg.device)
+        if not device.exists():
+            self.get_logger().error(
+                f"gripper_hybrid_close (real): serial device missing: {grasp_cfg.device} "
+                "(plug in U2D2, run ls-serial)"
+            )
+            return False
+
+        self.get_logger().info(
+            "gripper_hybrid_close (real): Dynamixel adaptive grasp "
+            f"id={grasp_cfg.dxl_id} device={grasp_cfg.device} "
+            f"script={script_path}"
+        )
+
+        def _log(msg: str) -> None:
+            self.get_logger().info(str(msg))
+
+        try:
+            run_fn(grasp_cfg, log_print=_log)
+        except Exception as exc:  # noqa: BLE001
+            self.get_logger().error(f"gripper_hybrid_close (real) failed: {exc}")
+            return False
+
+        self.get_logger().info("gripper_hybrid_close (real): OK")
+        return True
+
     def _execute_gripper_hybrid_close_action(self, action: Dict[str, Any]) -> bool:
-        """Position approach on gripper_motor_joint_pos, then torque hold via MuJoCo actuator reconfiguration."""
+        """Sim: MuJoCo hybrid close. Real: Dynamixel pre-open move then adaptive grasp."""
+        if self.robot_backend == "real":
+            cfg = self._dynamixel_cfg_for_action(action)
+            skip_pre = bool(
+                action.get(
+                    "dynamixel_skip_pre_close_move",
+                    cfg.get("dynamixel_skip_pre_close_move", False),
+                )
+            )
+            if not skip_pre:
+                pre_goal = self._dynamixel_goal_position_from_action(
+                    action, cfg, for_pre_close=True
+                )
+                pre_action = dict(action)
+                pre_action["goal_position"] = pre_goal
+                pre_action["dynamixel_leave_torque_on"] = True
+                self.get_logger().info(
+                    f"gripper_hybrid_close (real): moving to pre-close position {pre_goal} "
+                    f"(close profile)…"
+                )
+                if not self._execute_dynamixel_move_action(pre_action, for_close=True):
+                    return False
+            return self._execute_dynamixel_gripper_close_action(action)
+
         cfg = dict(self.gripper_cfg)
         if isinstance(action.get("gripper"), dict):
             cfg.update(dict(action["gripper"]))
@@ -7368,6 +7975,10 @@ class MotionManager(Node):
         return True
 
     def _execute_gripper_hybrid_open_action(self, action: Dict[str, Any]) -> bool:
+        """Sim: MuJoCo hybrid open. Real: Dynamixel position move to open_position."""
+        if self.robot_backend == "real":
+            return self._execute_dynamixel_gripper_open_action(action)
+
         cfg = dict(self.gripper_cfg)
         service_name = str(
             action.get("service_name", cfg.get("hybrid_open_service", "/mujoco/gripper/hybrid_open"))

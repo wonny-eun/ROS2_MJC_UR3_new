@@ -98,16 +98,17 @@ def _sample_non_overlapping_xy(
 def _write_randomized_scene_copy(base_scene_path: str):
     """
     Create a temporary MJCF copy with randomized object poses.
-    Drops all objects from the same spawn Z (default 0.9 m) while randomizing XY + continuous roll/pitch/yaw.
+    Drops all objects from the same spawn Z (default 0.9 m) while randomizing XY + yaw only
+    (roll/pitch fixed at 0 so objects stay upright on the table).
     """
     tree = ET.parse(base_scene_path)
     root = tree.getroot()
 
     # Tunables: update here if you want different spawn area.
-    x_min, x_max = -0.40, -0.25
-    y_min, y_max = -0.40, -0.25
+    x_min, x_max = -0.3, -0.15
+    y_min, y_max = -0.4, -0.3
     same_z = 0.9
-    min_dist_m = 0.1
+    min_dist_m = 0.08
 
     object_body_names = [
         "cylinder_1_obj",
@@ -121,8 +122,8 @@ def _write_randomized_scene_copy(base_scene_path: str):
     object_pose = {}
     for body_name, (x, y) in body_to_xy.items():
         object_name = body_name.replace("_obj", "")
-        roll = random.uniform(-math.pi, math.pi)
-        pitch = random.uniform(-math.pi, math.pi)
+        roll = 0.0
+        pitch = 0.0
         yaw = random.uniform(-math.pi, math.pi)
         object_pose[object_name] = {
             "x": x,
@@ -467,10 +468,15 @@ def generate_launch_description():
             {"target_class": yolo_target_class},
             {"display_hz": 10.0},
             {"conf": 0.35},
+            {"predict_conf_floor": 0.01},
             {"iou": 0.5},
             {"show_window": True},
             {"publish_annotated": True},
             {"annotated_topic": "/yolo/annotated"},
+            {"scene_unique_classes": True},
+            {"scene_assign_rescore_crops": True},
+            {"scene_assign_cluster_iou": 0.45},
+            {"exclusive_scene_classes": ["Box_1", "Cylinder_1", "Cylinder_2"]},
         ],
     )
 

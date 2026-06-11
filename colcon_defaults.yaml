@@ -1,0 +1,6 @@
+build:
+  symlink-install: true
+  allow-overriding:
+    - ur3_rl_bridge
+    - ur3_pick_task
+    - ur3_mujoco_sim
